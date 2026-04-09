@@ -1,0 +1,14 @@
+services:
+  cognitiveos:
+    build:
+      context: .
+    image: cognitiveos:latest
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      COGNITIVEOS_DB_PATH: /app/data/cognitiveos.db
+      COGNITIVEOS_MEMORY_OUTPUT_PATH: /app/MEMORY.MD
+    volumes:
+      - ./data:/app/data

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CognitiveOS Memory Ops"
+  short_description: "Operate CognitiveOS memory through the runtime, not ad hoc files or SQL"
+  default_prompt: "Use $cognitiveos-memory-ops to decide how the host should search, read, write, consolidate, and mount memory in the CognitiveOS project."
