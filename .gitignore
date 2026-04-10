@@ -1,5 +1,7 @@
 .pytest_cache/
 .ruff_cache/
+.codex/
+.gemini/
 .venv/
 *.pyc
 __pycache__/

@@ -8,6 +8,14 @@
   <img src="https://raw.githubusercontent.com/johnvonneumann36/CognitiveOS/main/assets/banner.png" alt="CognitiveOS banner">
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/cognitiveos/">
+    <img src="https://img.shields.io/pypi/v/cognitiveos" alt="PyPI version">
+  </a>
+  <img src="https://img.shields.io/pypi/pyversions/cognitiveos" alt="Python versions">
+  <img src="https://img.shields.io/github/license/johnvonneumann36/CognitiveOS" alt="License">
+</p>
+
 CognitiveOS is a local-first cognitive graph runtime for agentic environments such as Claude Code, Gemini CLI, Codex, and other MCP-capable hosts.
 
 This repository implements a production-oriented project skeleton for a local-first agent memory runtime, with a focus on:
@@ -18,7 +26,9 @@ This repository implements a production-oriented project skeleton for a local-fi
 - Docker-based deployment for HTTP MCP serving
 - extensible provider and extractor boundaries
 
-## Design Goals
+> 📦 `v0.1.0` is now available on PyPI: `pip install cognitiveos`
+
+## ✨ Design Goals
 
 CognitiveOS is not intended to be a universal knowledge vault.
 
@@ -33,7 +43,7 @@ The practical goals are:
 - support long-lived local operation with minimal infrastructure
 - keep the host-facing tool surface small and stable
 
-## Design Philosophy
+## 🧭 Design Philosophy
 
 Several design choices in this repository follow that goal directly.
 
@@ -68,7 +78,7 @@ Operational simplicity:
 - prefer bounded metadata over unbounded recursive ingestion
 - prefer internal hardening, such as SQLite stability settings and background logs, over expanding host-visible tooling
 
-## Status
+## ✅ Status
 
 The current milestone is an MVP foundation:
 
@@ -92,7 +102,7 @@ The current milestone is an MVP foundation:
 - first-start onboarding questions that seed pinned system-profile memory through structured profile metadata
 - background dream execution for runtime-only compaction paths
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 python -m venv .venv
@@ -170,7 +180,7 @@ Run the MCP server over Streamable HTTP:
 cognitiveos-mcp --transport streamable-http --profile host-core --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
-## Provider Configuration
+## 🔌 Provider Configuration
 
 Embedding and chat providers are optional. When an embedding model is configured:
 
@@ -226,7 +236,7 @@ COGNITIVEOS_CHAT_MODEL_NAME=gemini-2.5-flash
 COGNITIVEOS_CHAT_API_KEY=...
 ```
 
-## Docker
+## 🐳 Docker
 
 Build:
 
@@ -247,7 +257,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-## Operations
+## 🛠 Operations
 
 Health report:
 
@@ -352,7 +362,7 @@ Resolve one pending compaction with heuristic fallback in the background:
 cognitiveos dream --task-id <task-id> --use-heuristic
 ```
 
-## Data Model
+## 🧱 Data Model
 
 Canonical node rules:
 
@@ -428,7 +438,7 @@ Canonical edge rules:
 - edge lifecycle is controlled through `status` values such as `active`, `weak`, and `stale`
 - `link` no longer accepts a public `weight` parameter
 
-## Dream Policy
+## 🌙 Dream Policy
 
 Dream becomes due when either condition is met:
 
@@ -461,9 +471,10 @@ For host-core integrations, `dream` is the single public dream entrypoint. It co
 
 Heuristic fallback can also run in the background after the host explicitly selects it during compaction resolution.
 
-## Layout
+## 📁 Layout
 
 ```text
+skills/          repository-local agent skill instructions
 src/cognitiveos/
   cli/          CLI entrypoint
   db/           SQLite schema and repository
@@ -472,7 +483,7 @@ src/cognitiveos/
   providers/    Provider abstractions
 ```
 
-## Notes
+## 📝 Notes
 
 - Default runtime paths are workspace-relative: `./data/cognitiveos.db` and `./MEMORY.MD`.
 - Override them with `COGNITIVEOS_DB_PATH` and `COGNITIVEOS_MEMORY_OUTPUT_PATH`.
