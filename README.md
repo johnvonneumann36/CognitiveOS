@@ -1,11 +1,11 @@
 # CognitiveOS
 
 <p align="center">
-  <img src="assets/logo.png" alt="CognitiveOS logo" width="220">
+  <img src="https://raw.githubusercontent.com/johnvonneumann36/CognitiveOS/main/assets/logo.png" alt="CognitiveOS logo" width="220">
 </p>
 
 <p align="center">
-  <img src="assets/banner.png" alt="CognitiveOS banner">
+  <img src="https://raw.githubusercontent.com/johnvonneumann36/CognitiveOS/main/assets/banner.png" alt="CognitiveOS banner">
 </p>
 
 CognitiveOS is a local-first cognitive graph runtime for agentic environments such as Claude Code, Gemini CLI, Codex, and other MCP-capable hosts.
