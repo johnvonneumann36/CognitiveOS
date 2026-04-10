@@ -1,0 +1,23 @@
+{
+  "suite": "locomo",
+  "display_name": "LoCoMo",
+  "upstream_repo": "https://github.com/snap-research/locomo.git",
+  "vendor_dir": "vendor/locomo",
+  "data_dir": "data/locomo",
+  "defaults": {
+    "dataset_split": "qa",
+    "supported_splits": ["qa"]
+  },
+  "downloads": [],
+  "manual_files": [],
+  "official_eval": {
+    "kind": "local_metrics",
+    "relative_path": "",
+    "notes": "v1 uses QA-only local exact-match and token-F1 style metrics."
+  },
+  "notes": [
+    "Only QA is in scope for v1.",
+    "The prepare script copies locomo10.json from the cloned upstream repo into benchmark/data/locomo/.",
+    "Event summarization and multimodal dialog generation remain unsupported."
+  ]
+}

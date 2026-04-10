@@ -1,0 +1,2 @@
+# External benchmark-only dependencies. Keep these out of the main CognitiveOS runtime.
+ijson>=3.3

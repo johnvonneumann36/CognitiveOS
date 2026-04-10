@@ -16,6 +16,12 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 !data/.gitkeep
+benchmark/data/*
+!benchmark/data/.gitkeep
+benchmark/vendor/*
+!benchmark/vendor/.gitkeep
+benchmark/results/*
+!benchmark/results/.gitkeep
 .cognitiveos/bootstrap/
 docs/*
 !docs/.gitkeep

@@ -1,0 +1,30 @@
+{
+  "suite": "membench",
+  "display_name": "MemBench",
+  "upstream_repo": "https://github.com/import-myself/Membench.git",
+  "vendor_dir": "vendor/membench",
+  "data_dir": "data/membench",
+  "defaults": {
+    "dataset_split": "all",
+    "supported_splits": ["factual", "reflective", "all"]
+  },
+  "downloads": [],
+  "manual_files": [
+    {
+      "name": "membench_bundle",
+      "relative_path": "data/",
+      "source": "Download and extract the upstream MemBench data bundle so benchmark/data/membench/data/ contains the four official JSON files."
+    }
+  ],
+  "official_eval": {
+    "kind": "local_metrics",
+    "relative_path": "",
+    "notes": "v1 emphasizes runnable subset scoring and data validation rather than full paper reproduction."
+  },
+  "notes": [
+    "The extracted bundle currently exposes benchmark/data/membench/data/ as the authoritative v1 source path.",
+    "An empty data2test directory is tolerated; the harness does not require it for v1.",
+    "Supports factual and reflective subsets across participation and observation from the four official HighLevel and LowLevel JSON files.",
+    "Noise expansion and long-context augmentation are intentionally out of scope for v1."
+  ]
+}

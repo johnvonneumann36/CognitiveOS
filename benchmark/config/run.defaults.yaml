@@ -1,0 +1,14 @@
+{
+  "search": {
+    "top_k": 5,
+    "include_neighbors": 0,
+    "include_evidence": false
+  },
+  "runtime": {
+    "reuse_runtime": false,
+    "mode": "smoke"
+  },
+  "limits": {
+    "smoke_default": 3
+  }
+}
