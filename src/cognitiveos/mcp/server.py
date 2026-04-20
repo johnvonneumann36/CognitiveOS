@@ -10,11 +10,13 @@ from cognitiveos.models import AddPayloadType
 from cognitiveos.service import CognitiveOSService
 
 HOST_CORE_PROFILE = "host-core"
+CODEX_CORE_PROFILE = "codex-core"
 BOOTSTRAP_PROFILE = "bootstrap"
 OPERATOR_PROFILE = "operator"
 FULL_PROFILE = "full"
 SUPPORTED_SERVER_PROFILES = {
     HOST_CORE_PROFILE,
+    CODEX_CORE_PROFILE,
     BOOTSTRAP_PROFILE,
     OPERATOR_PROFILE,
     FULL_PROFILE,
@@ -30,7 +32,19 @@ def build_server(settings: AppSettings) -> FastMCP:
             "Unsupported MCP profile. Supported profiles: "
             + ", ".join(sorted(SUPPORTED_SERVER_PROFILES))
         )
-    expose_host_core = profile in {HOST_CORE_PROFILE, OPERATOR_PROFILE, FULL_PROFILE}
+    expose_memory_core = profile in {
+        HOST_CORE_PROFILE,
+        CODEX_CORE_PROFILE,
+        OPERATOR_PROFILE,
+        FULL_PROFILE,
+    }
+    expose_memory_mutations = profile in {
+        HOST_CORE_PROFILE,
+        CODEX_CORE_PROFILE,
+        OPERATOR_PROFILE,
+        FULL_PROFILE,
+    }
+    expose_memory_unlink = profile in {HOST_CORE_PROFILE, OPERATOR_PROFILE, FULL_PROFILE}
     expose_bootstrap = profile in {BOOTSTRAP_PROFILE, FULL_PROFILE}
     expose_operator = profile in {OPERATOR_PROFILE, FULL_PROFILE}
     mcp = FastMCP(
@@ -45,7 +59,7 @@ def build_server(settings: AppSettings) -> FastMCP:
         json_response=True,
     )
 
-    if expose_host_core:
+    if expose_memory_core:
         @mcp.tool()
         def search(
             query: str | None = None,
@@ -106,40 +120,6 @@ def build_server(settings: AppSettings) -> FastMCP:
                 durability=durability,
                 force=force,
                 name=name,
-            ).model_dump()
-
-        @mcp.tool()
-        def update(
-            id: str,
-            content: str,
-            tags: list[str] | None = None,
-            durability: str | None = None,
-        ) -> dict:
-            """Replace an existing node's content and optional tags/durability."""
-            return service.update_node(
-                node_id=id,
-                content=content,
-                tags=tags or [],
-                durability=durability,
-            ).model_dump()
-
-        @mcp.tool()
-        def link(src_id: str, dst_id: str, relation: str) -> dict:
-            """Create or reinforce a directed relationship between two nodes."""
-            receipt = service.link_nodes(
-                src_id=src_id,
-                dst_id=dst_id,
-                relation=relation,
-            )
-            return receipt.model_dump()
-
-        @mcp.tool()
-        def unlink(src_id: str, dst_id: str, relation: str | None = None) -> dict:
-            """Remove one relationship or every relationship between two nodes."""
-            return service.unlink_nodes(
-                src_id=src_id,
-                dst_id=dst_id,
-                relation=relation,
             ).model_dump()
 
         @mcp.tool()
@@ -214,6 +194,42 @@ def build_server(settings: AppSettings) -> FastMCP:
                 background=background,
             )
             return result.model_dump()
+
+    if expose_memory_mutations:
+        @mcp.tool()
+        def update(
+            id: str,
+            content: str,
+            tags: list[str] | None = None,
+            durability: str | None = None,
+        ) -> dict:
+            """Replace an existing node's content and optional tags/durability."""
+            return service.update_node(
+                node_id=id,
+                content=content,
+                tags=tags or [],
+                durability=durability,
+            ).model_dump()
+
+        @mcp.tool()
+        def link(src_id: str, dst_id: str, relation: str) -> dict:
+            """Create or reinforce a directed relationship between two nodes."""
+            receipt = service.link_nodes(
+                src_id=src_id,
+                dst_id=dst_id,
+                relation=relation,
+            )
+            return receipt.model_dump()
+
+    if expose_memory_unlink:
+        @mcp.tool()
+        def unlink(src_id: str, dst_id: str, relation: str | None = None) -> dict:
+            """Remove one relationship or every relationship between two nodes."""
+            return service.unlink_nodes(
+                src_id=src_id,
+                dst_id=dst_id,
+                relation=relation,
+            ).model_dump()
 
     if expose_operator:
         @mcp.tool()

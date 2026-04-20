@@ -553,7 +553,7 @@ def mcp(
     ] = "stdio",
     profile: Annotated[
         str,
-        typer.Option(help="MCP profile: host-core, bootstrap, operator, or full."),
+        typer.Option(help="MCP profile: codex-core, host-core, bootstrap, operator, or full."),
     ] = "host-core",
     host: Annotated[str, typer.Option(help="HTTP bind host.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="HTTP bind port.")] = 8000,

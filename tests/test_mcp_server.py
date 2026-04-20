@@ -47,6 +47,19 @@ def test_host_core_profile_exposes_only_compact_memory_surface(tmp_path: Path) -
     }
 
 
+def test_codex_core_profile_exposes_minimal_memory_surface(tmp_path: Path) -> None:
+    tool_names = _tool_names(db_path=tmp_path / "codex-core.db", profile="codex-core")
+
+    assert tool_names == {
+        "search",
+        "read",
+        "add",
+        "update",
+        "link",
+        "dream",
+    }
+
+
 def test_full_profile_exposes_operator_and_bootstrap_tools(tmp_path: Path) -> None:
     tool_names = _tool_names(db_path=tmp_path / "full.db", profile="full")
 

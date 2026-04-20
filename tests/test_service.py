@@ -1662,11 +1662,19 @@ def test_codex_bootstrap_install_and_onboarding_close_the_loop(tmp_path: Path) -
 
     agents_path = tmp_path / "AGENTS.md"
     project_config_path = tmp_path / ".codex" / "config.toml"
+    bootstrap_prompt_path = Path(bundle.bootstrap_prompt_path)
     assert agents_path.exists()
     assert project_config_path.exists()
+    assert bootstrap_prompt_path.exists()
     assert "COGNITIVEOS HOST BOOTSTRAP START" in agents_path.read_text(encoding="utf-8")
     assert "Cold-start mount procedure" in agents_path.read_text(encoding="utf-8")
+    assert "reduced `codex-core` profile" in agents_path.read_text(encoding="utf-8")
+    assert "search/read/add/update/link/dream" in bootstrap_prompt_path.read_text(
+        encoding="utf-8"
+    )
+    assert "omitting `unlink`" in agents_path.read_text(encoding="utf-8")
     assert "mcp_servers.cognitiveos" in project_config_path.read_text(encoding="utf-8")
+    assert "codex-core" in project_config_path.read_text(encoding="utf-8")
     assert "--project-root" in project_config_path.read_text(encoding="utf-8")
     assert "--memory-output-path" in project_config_path.read_text(encoding="utf-8")
 

@@ -2539,7 +2539,7 @@ class CognitiveOSService:
                 '  "--transport",',
                 '  "stdio",',
                 '  "--profile",',
-                f'  "{self._host_mcp_profile()}",',
+                f'  "{self._host_mcp_profile(host_kind="codex")}",',
                 '  "--project-root",',
                 f'  "{self._project_root()}",',
                 '  "--db-path",',
@@ -2553,6 +2553,7 @@ class CognitiveOSService:
 
     def _host_system_prompt(self, memory_path: Path, *, host_kind: str) -> str:
         questions = self._bootstrap_onboarding_questions()
+        limited_codex_surface = host_kind.strip().lower().replace("-", "_") == "codex"
         lines = [
             "Cold-start mount procedure:",
             (
@@ -2579,6 +2580,9 @@ class CognitiveOSService:
                 (
                     "5. Prefer `search` then `read` for recall, and "
                     "`add`/`update`/`link` for writes."
+                    if limited_codex_surface
+                    else "5. Prefer `search` then `read` for recall, and "
+                    "`add`/`update`/`link` for writes."
                 ),
                 (
                     "6. If a response includes a dream reminder and the host "
@@ -2592,6 +2596,13 @@ class CognitiveOSService:
                 f"8. Host kind for this install target: `{host_kind}`.",
                 "",
                 "Parameter recipes:",
+                (
+                    "- This Codex install intentionally mounts the reduced `codex-core` profile "
+                    "with `search`, `read`, `add`, `update`, `link`, and `dream`, while "
+                    "still omitting `unlink` to reduce tool-schema and parameter errors."
+                    if limited_codex_surface
+                    else None
+                ),
                 (
                     "- `search`: pass at least one of `query` or `keyword`; start with "
                     "`include_neighbors=0` or `1`."
@@ -2609,15 +2620,20 @@ class CognitiveOSService:
                     "`content`."
                 ),
                 (
+                    "- `link`: pass `src_id`, `dst_id`, and a concrete directed `relation` "
+                    "such as `supports` or `depends_on`."
+                ),
+                (
                     "- `dream`: use `inspect=status|runs|tasks` to inspect; use `task_id` "
                     "plus `title`, `description`, and `content` to resolve a host-authored "
                     "compaction, or set `use_heuristic=true`."
                 ),
             ]
         )
-        return "\n".join(lines) + "\n"
+        return "\n".join(line for line in lines if line is not None) + "\n"
 
     def _bootstrap_prompt(self, memory_path: Path, *, host_kind: str) -> str:
+        limited_codex_surface = host_kind.strip().lower().replace("-", "_") == "codex"
         return "\n".join(
             [
                 "# CognitiveOS Host Bootstrap",
@@ -2637,7 +2653,10 @@ class CognitiveOSService:
                     "`submit_host_onboarding` before depending on memory."
                 ),
                 (
-                    "4. Prefer MCP tools for search/read/add/update/link/dream "
+                    "4. Prefer MCP tools for search/read/add/update/link/dream over ad hoc "
+                    "filesystem parsing."
+                    if limited_codex_surface
+                    else "4. Prefer MCP tools for search/read/add/update/link/dream "
                     "over ad hoc filesystem parsing."
                 ),
                 (
@@ -2650,20 +2669,23 @@ class CognitiveOSService:
                 ),
                 "",
                 "Recommended MCP command:",
-                (f"`{self._host_mcp_command()}`"),
+                (f"`{self._host_mcp_command(host_kind=host_kind)}`"),
             ]
         ) + "\n"
 
     @staticmethod
-    def _host_mcp_profile() -> str:
+    def _host_mcp_profile(*, host_kind: str = "generic") -> str:
+        normalized = host_kind.strip().lower().replace("-", "_")
+        if normalized == "codex":
+            return "codex-core"
         return "host-core"
 
-    def _host_mcp_args(self) -> list[str]:
+    def _host_mcp_args(self, *, host_kind: str = "generic") -> list[str]:
         return [
             "--transport",
             "stdio",
             "--profile",
-            self._host_mcp_profile(),
+            self._host_mcp_profile(host_kind=host_kind),
             "--project-root",
             str(self._project_root()),
             "--db-path",
@@ -2672,5 +2694,5 @@ class CognitiveOSService:
             str(self.settings.memory_output_path),
         ]
 
-    def _host_mcp_command(self) -> str:
-        return " ".join(["cognitiveos-mcp", *self._host_mcp_args()])
+    def _host_mcp_command(self, *, host_kind: str = "generic") -> str:
+        return " ".join(["cognitiveos-mcp", *self._host_mcp_args(host_kind=host_kind)])

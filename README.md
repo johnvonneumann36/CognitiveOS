@@ -26,7 +26,7 @@ This repository implements a production-oriented project skeleton for a local-fi
 - Docker-based deployment for HTTP MCP serving
 - extensible provider and extractor boundaries
 
-> 📦 `v0.1.1` is now available on PyPI: `pip install cognitiveos`
+> 📦 `v0.1.2` is now available on PyPI: `pip install cognitiveos`
 
 ## Start Here
 
@@ -37,6 +37,15 @@ pip install cognitiveos
 cognitiveos init-db
 cognitiveos-mcp --transport stdio --profile host-core
 ```
+
+If you are mounting CognitiveOS into Codex specifically, prefer the reduced profile:
+
+```bash
+cognitiveos-mcp --transport stdio --profile codex-core
+```
+
+`codex-core` keeps `search`, `read`, `add`, `update`, `link`, and `dream`, while
+omitting `unlink`.
 
 If you want to work on the repository locally:
 
@@ -196,6 +205,12 @@ Run the MCP server over stdio:
 
 ```bash
 cognitiveos-mcp --transport stdio --profile host-core
+```
+
+For Codex-specific mounts, use the reduced tool surface:
+
+```bash
+cognitiveos-mcp --transport stdio --profile codex-core
 ```
 
 Run the MCP server over Streamable HTTP:
@@ -514,7 +529,7 @@ src/cognitiveos/
 - Bootstrap artifacts remain project-local by default under `./.cognitiveos/bootstrap/`.
 - Override runtime locations explicitly with `COGNITIVEOS_HOME`, `COGNITIVEOS_DB_PATH`, and `COGNITIVEOS_MEMORY_OUTPUT_PATH` when needed.
 - `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`.
-- `bootstrap-host --host-kind codex --install` additionally writes a managed block into project-root `AGENTS.md` and `.codex/config.toml` for Codex-specific auto-mount, and pins `--project-root`, `--db-path`, and `--memory-output-path` in the generated MCP config.
+- `bootstrap-host --host-kind codex --install` additionally writes a managed block into project-root `AGENTS.md` and `.codex/config.toml` for Codex-specific auto-mount, uses the reduced `codex-core` profile, and pins `--project-root`, `--db-path`, and `--memory-output-path` in the generated MCP config.
 - On first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the user the generated questions and submit them with `submit_host_onboarding` before depending on memory.
 - Files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts. Discover them through `host-bootstrap-status` or generate them with `bootstrap-host`; they are not meant to be repository-tracked source files.
 - Durable engineering docs in this repository are kept in English.
