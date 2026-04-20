@@ -12,7 +12,7 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "johnvonneumann36" }
 ]
-urls = { Homepage = "https://github.com/johnvonneumann36/CognitiveOS", Repository = "https://github.com/johnvonneumann36/CognitiveOS", Issues = "https://github.com/johnvonneumann36/CognitiveOS/issues" }
+urls = { Homepage = "https://github.com/johnvonneumann36/CognitiveOS", Documentation = "https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs", Repository = "https://github.com/johnvonneumann36/CognitiveOS", Issues = "https://github.com/johnvonneumann36/CognitiveOS/issues", Releases = "https://github.com/johnvonneumann36/CognitiveOS/releases" }
 keywords = ["cognitive graph", "memory", "mcp", "cli", "sqlite"]
 classifiers = [
   "Development Status :: 3 - Alpha",

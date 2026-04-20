@@ -28,6 +28,30 @@ This repository implements a production-oriented project skeleton for a local-fi
 
 > 📦 `v0.1.1` is now available on PyPI: `pip install cognitiveos`
 
+## Start Here
+
+If you want to try CognitiveOS as a package user:
+
+```bash
+pip install cognitiveos
+cognitiveos init-db
+cognitiveos-mcp --transport stdio --profile host-core
+```
+
+If you want to work on the repository locally:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Public entry points:
+
+- PyPI: `https://pypi.org/project/cognitiveos/`
+- Releases: `https://github.com/johnvonneumann36/CognitiveOS/releases`
+- Repository docs: `https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs`
+
 ## ✨ Design Goals
 
 CognitiveOS is not intended to be a universal knowledge vault.
