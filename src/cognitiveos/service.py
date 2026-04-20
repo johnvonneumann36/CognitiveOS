@@ -193,6 +193,11 @@ class CognitiveOSService:
         self.initialize()
         self.last_notices = []
         timings_ms: dict[str, float] = {}
+        if not (query and query.strip()) and not (keyword and keyword.strip()):
+            raise InvalidPayloadError(
+                "Search requires at least one non-empty query or keyword. "
+                "Use keyword for exact recall, query for semantic recall, or both."
+            )
 
         phase_started = perf_counter()
         self._apply_search_governance_if_due()
@@ -2259,7 +2264,7 @@ class CognitiveOSService:
         return normalized
 
     def _project_root(self) -> Path:
-        return self.settings.memory_output_path.parent.resolve()
+        return self.settings.project_root.resolve()
 
     def _bootstrap_artifact_paths(
         self,
@@ -2535,8 +2540,12 @@ class CognitiveOSService:
                 '  "stdio",',
                 '  "--profile",',
                 f'  "{self._host_mcp_profile()}",',
+                '  "--project-root",',
+                f'  "{self._project_root()}",',
                 '  "--db-path",',
                 f'  "{self.settings.db_path}",',
+                '  "--memory-output-path",',
+                f'  "{self.settings.memory_output_path}",',
                 "]",
                 "startup_timeout_ms = 20000",
             ]
@@ -2581,6 +2590,29 @@ class CognitiveOSService:
                     "than manual file edits."
                 ),
                 f"8. Host kind for this install target: `{host_kind}`.",
+                "",
+                "Parameter recipes:",
+                (
+                    "- `search`: pass at least one of `query` or `keyword`; start with "
+                    "`include_neighbors=0` or `1`."
+                ),
+                (
+                    "- `read`: pass concrete ids from `search`; set `include_content=true` "
+                    "only when summaries are insufficient."
+                ),
+                (
+                    "- `add`: use `type=content` for raw text, `type=file` for a file path "
+                    "or URL, and `type=folder` for a local folder root."
+                ),
+                (
+                    "- `update`: reuse the existing node id and send the replacement "
+                    "`content`."
+                ),
+                (
+                    "- `dream`: use `inspect=status|runs|tasks` to inspect; use `task_id` "
+                    "plus `title`, `description`, and `content` to resolve a host-authored "
+                    "compaction, or set `use_heuristic=true`."
+                ),
             ]
         )
         return "\n".join(lines) + "\n"
@@ -2632,8 +2664,12 @@ class CognitiveOSService:
             "stdio",
             "--profile",
             self._host_mcp_profile(),
+            "--project-root",
+            str(self._project_root()),
             "--db-path",
             str(self.settings.db_path),
+            "--memory-output-path",
+            str(self.settings.memory_output_path),
         ]
 
     def _host_mcp_command(self) -> str:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognitiveos"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first cognitive graph middleware with CLI, MCP, and Docker runtime targets."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -18,8 +18,13 @@ app = typer.Typer(help="CognitiveOS command line interface.")
 def _service(
     db_path: Path | None = None,
     memory_output_path: Path | None = None,
+    project_root: Path | None = None,
 ) -> CognitiveOSService:
-    settings = AppSettings.from_env(db_path=db_path, memory_output_path=memory_output_path)
+    settings = AppSettings.from_env(
+        db_path=db_path,
+        memory_output_path=memory_output_path,
+        project_root=project_root,
+    )
     return CognitiveOSService.from_settings(settings)
 
 
@@ -425,9 +430,15 @@ def bootstrap_host(
         bool,
         typer.Option(help="Install the host mount into project files when supported."),
     ] = False,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            help="Project root used for bootstrap artifacts and host install targets."
+        ),
+    ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:
-    service = _service(db_path=db_path)
+    service = _service(db_path=db_path, project_root=project_root)
     _print_json(
         service.build_host_bootstrap(
             output_dir=output_dir,
@@ -449,9 +460,15 @@ def host_bootstrap_status(
             help="Target host kind, for example generic, codex, claude-code, gemini-cli, or cursor."
         ),
     ] = "generic",
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            help="Project root used for bootstrap artifacts and host install targets."
+        ),
+    ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:
-    service = _service(db_path=db_path)
+    service = _service(db_path=db_path, project_root=project_root)
     _print_json(
         service.get_host_bootstrap_status(
             host_kind=host_kind,
@@ -479,9 +496,15 @@ def submit_host_onboarding(
             help="Target host kind, for example generic, codex, claude-code, gemini-cli, or cursor."
         ),
     ] = "generic",
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            help="Project root used for bootstrap artifacts and host install targets."
+        ),
+    ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:
-    service = _service(db_path=db_path)
+    service = _service(db_path=db_path, project_root=project_root)
     _print_json(
         service.submit_host_onboarding(
             answers=_parse_key_value_pairs(answer),
@@ -536,9 +559,31 @@ def mcp(
     port: Annotated[int, typer.Option(help="HTTP bind port.")] = 8000,
     path: Annotated[str, typer.Option(help="HTTP mount path.")] = "/mcp",
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
+    memory_output_path: Annotated[
+        Path | None,
+        typer.Option(
+            help=(
+                "Override the MEMORY.MD output path. If omitted, CognitiveOS uses the "
+                "shared runtime home or infers it from the db path."
+            )
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            help=(
+                "Project root used for bootstrap/install targets and background job cwd. "
+                "Defaults to the current working directory."
+            )
+        ),
+    ] = None,
 ) -> None:
     run_mcp_server(
-        settings=AppSettings.from_env(db_path=db_path),
+        settings=AppSettings.from_env(
+            db_path=db_path,
+            memory_output_path=memory_output_path,
+            project_root=project_root,
+        ),
         transport=transport,
         profile=profile,
         host=host,

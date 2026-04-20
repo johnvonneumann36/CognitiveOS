@@ -57,6 +57,7 @@ def build_service(
     settings = AppSettings.from_env(
         db_path=tmp_path / "cognitiveos.db",
         memory_output_path=tmp_path / "MEMORY.MD",
+        project_root=tmp_path,
     )
     settings.bootstrap_dir = tmp_path / ".cognitiveos" / "bootstrap"
     settings.background_log_dir = tmp_path / ".cognitiveos" / "logs"
@@ -1598,6 +1599,11 @@ def test_build_host_bootstrap_writes_mount_files(tmp_path: Path) -> None:
     assert "--profile host-core" in prompt_text
     assert bundle.status.host_kind == "generic"
 
+    system_prompt_text = Path(bundle.system_prompt_path).read_text(encoding="utf-8")
+    assert "Parameter recipes:" in system_prompt_text
+    assert "type=content" in system_prompt_text
+    assert "inspect=status|runs|tasks" in system_prompt_text
+
     status = service.get_host_bootstrap_status(output_dir=tmp_path / ".cognitiveos" / "bootstrap")
     assert status.host_kind == "generic"
     assert any("only implemented for codex" in notice for notice in status.notices)
@@ -1605,10 +1611,14 @@ def test_build_host_bootstrap_writes_mount_files(tmp_path: Path) -> None:
     mount_manifest = Path(bundle.mount_manifest_path).read_text(encoding="utf-8")
     assert '"--profile"' in mount_manifest
     assert '"host-core"' in mount_manifest
+    assert '"--project-root"' in mount_manifest
+    assert '"--memory-output-path"' in mount_manifest
 
     mcp_config = Path(bundle.mcp_config_path).read_text(encoding="utf-8")
     assert '"--profile"' in mcp_config
     assert '"host-core"' in mcp_config
+    assert '"--project-root"' in mcp_config
+    assert '"--memory-output-path"' in mcp_config
 
 
 def test_codex_bootstrap_install_and_onboarding_close_the_loop(tmp_path: Path) -> None:
@@ -1657,6 +1667,8 @@ def test_codex_bootstrap_install_and_onboarding_close_the_loop(tmp_path: Path) -
     assert "COGNITIVEOS HOST BOOTSTRAP START" in agents_path.read_text(encoding="utf-8")
     assert "Cold-start mount procedure" in agents_path.read_text(encoding="utf-8")
     assert "mcp_servers.cognitiveos" in project_config_path.read_text(encoding="utf-8")
+    assert "--project-root" in project_config_path.read_text(encoding="utf-8")
+    assert "--memory-output-path" in project_config_path.read_text(encoding="utf-8")
 
     final_status = service.get_host_bootstrap_status(
         host_kind="codex",
@@ -1676,6 +1688,17 @@ def test_non_codex_host_kinds_use_generic_bootstrap_flow_without_install(tmp_pat
         assert status.host_kind == host_kind.replace("-", "_")
         assert status.installed is False
         assert any("only implemented for codex" in notice for notice in status.notices)
+
+
+def test_search_requires_query_or_keyword(tmp_path: Path) -> None:
+    service, _ = build_service(tmp_path)
+
+    try:
+        service.search()
+    except InvalidPayloadError as exc:
+        assert "query or keyword" in str(exc)
+    else:
+        raise AssertionError("search() should reject an empty query and keyword.")
 
 
 def test_sqlite_connection_applies_stability_pragmas(tmp_path: Path) -> None:
@@ -1715,7 +1738,7 @@ def test_background_process_uses_project_root_not_current_directory(tmp_path: Pa
     finally:
         subprocess.Popen = original_popen  # type: ignore[assignment]
 
-    assert captured["kwargs"]["cwd"] == str(settings.memory_output_path.parent.resolve())
+    assert captured["kwargs"]["cwd"] == str(settings.project_root.resolve())
     stdout_handle = captured["kwargs"]["stdout"]
     stderr_handle = captured["kwargs"]["stderr"]
     assert stdout_handle is stderr_handle

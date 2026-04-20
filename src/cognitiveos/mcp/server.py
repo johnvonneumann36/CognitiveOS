@@ -37,7 +37,10 @@ def build_server(settings: AppSettings) -> FastMCP:
         settings.server_name,
         instructions=(
             "CognitiveOS is a local-first cognitive graph runtime exposing a compact "
-            f"{profile} MCP profile."
+            f"{profile} MCP profile. Parameter hints: search requires query and/or keyword; "
+            "add uses type=content|file|folder with payload matching the type; dream uses "
+            "inspect=status|runs|tasks for inspection, or task_id plus title, description, "
+            "and content for host-authored compaction."
         ),
         json_response=True,
     )
@@ -51,6 +54,11 @@ def build_server(settings: AppSettings) -> FastMCP:
             include_neighbors: int = 1,
             include_evidence: bool = False,
         ) -> list[dict]:
+            """Search memory by semantic query, keyword, or both.
+
+            Pass at least one of query or keyword. Keep include_neighbors at 0 or 1 unless
+            the first result set is clearly insufficient.
+            """
             return [
                 result.model_dump()
                 for result in service.search(
@@ -64,6 +72,11 @@ def build_server(settings: AppSettings) -> FastMCP:
 
         @mcp.tool()
         def read(ids: list[str], include_content: bool = False) -> dict[str, dict]:
+            """Read concrete nodes by id.
+
+            Use ids returned from search. Set include_content=true only when summaries are
+            insufficient and full payload text is actually needed.
+            """
             return {
                 node_id: node.model_dump()
                 for node_id, node in service.read_nodes(
@@ -81,6 +94,11 @@ def build_server(settings: AppSettings) -> FastMCP:
             force: bool = False,
             name: str | None = None,
         ) -> dict:
+            """Add content, a file/URL source, or a folder root.
+
+            Use type=content for raw text, type=file for a file path or remote URL, and
+            type=folder for a local folder path. Do not pass file paths when type=content.
+            """
             return service.add_node(
                 payload_type=type,
                 payload=payload,
@@ -97,6 +115,7 @@ def build_server(settings: AppSettings) -> FastMCP:
             tags: list[str] | None = None,
             durability: str | None = None,
         ) -> dict:
+            """Replace an existing node's content and optional tags/durability."""
             return service.update_node(
                 node_id=id,
                 content=content,
@@ -106,6 +125,7 @@ def build_server(settings: AppSettings) -> FastMCP:
 
         @mcp.tool()
         def link(src_id: str, dst_id: str, relation: str) -> dict:
+            """Create or reinforce a directed relationship between two nodes."""
             receipt = service.link_nodes(
                 src_id=src_id,
                 dst_id=dst_id,
@@ -115,6 +135,7 @@ def build_server(settings: AppSettings) -> FastMCP:
 
         @mcp.tool()
         def unlink(src_id: str, dst_id: str, relation: str | None = None) -> dict:
+            """Remove one relationship or every relationship between two nodes."""
             return service.unlink_nodes(
                 src_id=src_id,
                 dst_id=dst_id,
@@ -139,6 +160,12 @@ def build_server(settings: AppSettings) -> FastMCP:
             use_heuristic: bool = False,
             background: bool = False,
         ) -> dict:
+            """Inspect dream status, run compaction, or resolve a pending compaction task.
+
+            Use inspect=status|runs|tasks for inspection. Use task_id with title,
+            description, and content to resolve a pending host-authored compaction, or set
+            use_heuristic=true for automatic fallback resolution.
+            """
             if inspect is not None:
                 normalized_inspect = inspect.strip().lower()
                 if normalized_inspect == "status":
@@ -324,6 +351,24 @@ def main() -> None:
         help="Override the SQLite database path.",
     )
     parser.add_argument(
+        "--memory-output-path",
+        type=Path,
+        default=None,
+        help=(
+            "Override the MEMORY.MD output path. If omitted, CognitiveOS uses the shared "
+            "runtime home or infers it from the db path."
+        ),
+    )
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=None,
+        help=(
+            "Project root used for bootstrap/install targets and background job cwd. "
+            "Defaults to the current working directory."
+        ),
+    )
+    parser.add_argument(
         "--transport",
         default="stdio",
         choices=["stdio", "sse", "streamable-http"],
@@ -341,7 +386,11 @@ def main() -> None:
     args = parser.parse_args()
 
     run_mcp_server(
-        settings=AppSettings.from_env(db_path=args.db_path),
+        settings=AppSettings.from_env(
+            db_path=args.db_path,
+            memory_output_path=args.memory_output_path,
+            project_root=args.project_root,
+        ),
         transport=args.transport,
         host=args.host,
         port=args.port,
