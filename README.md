@@ -16,9 +16,37 @@
   <img src="https://img.shields.io/github/license/johnvonneumann36/CognitiveOS" alt="License">
 </p>
 
-CognitiveOS is a local-first cognitive graph runtime for agentic environments such as Claude Code, Gemini CLI, Codex, and other MCP-capable hosts.
+<p align="center">
+  <strong>Local-first cognitive graph runtime for Codex, Claude Code, Gemini CLI, and other MCP-capable hosts.</strong>
+</p>
 
-This repository implements a production-oriented project skeleton for a local-first agent memory runtime, with a focus on:
+<p align="center">
+  <a href="https://pypi.org/project/cognitiveos/">PyPI</a>
+  |
+  <a href="https://github.com/johnvonneumann36/CognitiveOS/releases">Releases</a>
+  |
+  <a href="https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs">Docs</a>
+</p>
+
+> [!IMPORTANT]
+> `v0.1.2` is live on PyPI: `pip install cognitiveos`
+>
+> For Codex mounts, prefer `--profile codex-core`.
+> `codex-core` exposes `search`, `read`, `add`, `update`, `link`, and `dream`,
+> while intentionally omitting `unlink`.
+
+This repository is a production-oriented project skeleton for a local-first agent memory runtime.
+
+At a glance:
+
+| Need | Use | Why |
+| --- | --- | --- |
+| Install CognitiveOS quickly | `pip install cognitiveos` | Fastest path to a working local runtime |
+| Mount into Codex safely | `cognitiveos-mcp --profile codex-core` | Smaller tool surface, clearer prompts |
+| Run a general MCP host | `cognitiveos-mcp --profile host-core` | Full core memory workflow including `unlink` |
+| Explore docs and releases | GitHub docs and release pages | Best entry point for release notes and implementation details |
+
+CognitiveOS focuses on:
 
 - installable Python packaging via `pip`
 - CLI operations for database lifecycle and graph manipulation
@@ -26,11 +54,11 @@ This repository implements a production-oriented project skeleton for a local-fi
 - Docker-based deployment for HTTP MCP serving
 - extensible provider and extractor boundaries
 
-> 📦 `v0.1.2` is now available on PyPI: `pip install cognitiveos`
-
 ## Start Here
 
-If you want to try CognitiveOS as a package user:
+### Package Install
+
+Use this when you just want a local runtime:
 
 ```bash
 pip install cognitiveos
@@ -38,16 +66,17 @@ cognitiveos init-db
 cognitiveos-mcp --transport stdio --profile host-core
 ```
 
-If you are mounting CognitiveOS into Codex specifically, prefer the reduced profile:
+### Codex Mount
+
+Use this when CognitiveOS is being mounted into Codex:
 
 ```bash
 cognitiveos-mcp --transport stdio --profile codex-core
 ```
 
-`codex-core` keeps `search`, `read`, `add`, `update`, `link`, and `dream`, while
-omitting `unlink`.
+### Repository Development
 
-If you want to work on the repository locally:
+Use this when you are developing CognitiveOS itself:
 
 ```bash
 python -m venv .venv
@@ -55,7 +84,17 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-Public entry points:
+### MCP Profile Guide
+
+| Profile | Intended use | Public tools |
+| --- | --- | --- |
+| `codex-core` | Codex auto-mount | `search`, `read`, `add`, `update`, `link`, `dream` |
+| `host-core` | General MCP hosts | `search`, `read`, `add`, `update`, `link`, `unlink`, `dream` |
+| `operator` | Maintenance / graph operations | core tools plus relationship and provider operations |
+| `bootstrap` | Onboarding and host install flows | bootstrap-only tools |
+| `full` | Everything | all public tools |
+
+### Public Entry Points
 
 - PyPI: `https://pypi.org/project/cognitiveos/`
 - Releases: `https://github.com/johnvonneumann36/CognitiveOS/releases`
@@ -113,49 +152,58 @@ Operational simplicity:
 
 ## ✅ Status
 
-The current milestone is an MVP foundation:
+The current milestone is an MVP foundation with working runtime, retrieval, and host bootstrap flows.
 
-- SQLite-backed node, edge, and audit log storage
-- `sqlite-vec` backed vector index with cosine KNN retrieval
-- FTS5 keyword search over a unified `search_text` projection with bounded neighbor traversal
-- optional multi-provider embeddings with similarity probing and query-only semantic search
-- hybrid ranking that merges semantic and FTS results
-- content, file, and folder ingestion with durable `source_document` and `source_collection` roots
-- chat-backed document descriptions and retrieval-tag generation for file ingestion
-- Trafilatura-first remote extraction with typed remote source metadata and snapshot preservation for remote URLs
-- root-only folder inspection for repository, media, document, and workspace collection anchors
-- update and link operations with audit tracing
-- canonical node semantics where `node_type` is structural, `durability` is lifecycle, `tags` are retrieval labels, and `metadata` is factual structured payload
-- canonical edge semantics where `strength_score` is the only runtime edge-strength field
-- dream execution with access-log-driven clustering, chat-first compaction, host-agent fallback tasks, and `MEMORY.MD` generation
-- CLI and MCP entrypoints
-- operations commands for health checks, provider smoke tests, and embedding reindexing
-- host bootstrap bundle generation for cold-start memory mount and MCP wiring
-- generic host bootstrap outputs plus Codex-specific project auto-install via `AGENTS.md` and `.codex/config.toml`
-- first-start onboarding questions that seed pinned system-profile memory through structured profile metadata
-- background dream execution for runtime-only compaction paths
+| Area | Included |
+| --- | --- |
+| Core runtime | SQLite-backed nodes, edges, audit logs, `sqlite-vec`, FTS5 |
+| Retrieval | keyword, semantic, and hybrid ranking with bounded neighbor traversal |
+| Ingestion | content, local files, folders, remote URLs, remote snapshot preservation |
+| Graph updates | `add`, `update`, `link`, audit tracing, canonical node and edge semantics |
+| Dream flow | clustering, chat-first compaction, host fallback tasks, `MEMORY.MD` generation |
+| Host integration | CLI, MCP, bootstrap bundle generation, Codex auto-install support |
+| Operations | health checks, provider smoke tests, embedding reindexing, background jobs |
+
+Highlights:
+
+- content, file, and folder ingestion use durable `source_document` and `source_collection` roots
+- remote extraction is Trafilatura-first and preserves typed source metadata plus snapshots
+- folder inspection stays root-only in v1 to keep memory compact and predictable
+- first-start onboarding can seed pinned system-profile memory through structured profile metadata
+- background dream execution is available for runtime-only compaction paths
 
 ## 🚀 Quick Start
+
+### Fast Path
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
-```
-
-Initialize the workspace database:
-
-```bash
 cognitiveos init-db
+cognitiveos-mcp --transport stdio --profile host-core
 ```
 
-Add a node:
+### Common Commands
+
+| Goal | Command |
+| --- | --- |
+| Initialize the workspace database | `cognitiveos init-db` |
+| Add raw text memory | `cognitiveos add --type content --payload "..." --tag tech` |
+| Add a file or URL | `cognitiveos add --type file --payload "..."` |
+| Add a folder root | `cognitiveos add --type folder --payload ".\\path"` |
+| Search by keyword | `cognitiveos search --keyword CognitiveOS --top-k 5` |
+| Search by semantic query | `cognitiveos search --query "graph memory runtime"` |
+| Start MCP over stdio | `cognitiveos-mcp --transport stdio --profile host-core` |
+| Start Codex-safe MCP profile | `cognitiveos-mcp --transport stdio --profile codex-core` |
+
+### Add Memory
 
 ```bash
 cognitiveos add --type content --payload "CognitiveOS stores graph-shaped memory." --tag tech --tag memory --tag graph
 ```
 
-Add a folder root:
+### Add Source Anchors
 
 ```bash
 cognitiveos add --type folder --payload ".\\Pictures\\Japan Trip 2025" --name "Japan Trip 2025 Photos" --tag travel --tag japan --tag photos
@@ -173,23 +221,25 @@ Add a browser-exported local capture with a sidecar manifest:
 cognitiveos add --type file --payload ".\\exports\\article.html"
 ```
 
-Note:
+> [!TIP]
+> Use repeated `--tag` for retrieval labels.
+> Use `--name` when the node should keep a stable human-readable title.
 
-- use repeated `--tag` for retrieval labels
-- use `--name` when the node should keep a stable human-readable title instead of relying on payload-derived defaults
+Source-handling notes:
+
 - remote `http` and `https` URLs are preserved by default under `.cognitiveos/snapshots/`, using Markdown for readable text/page captures and binary files for formats such as PDF
 - when a page requires login or browser state, use the host's existing browser tools to open the accessible page first; CognitiveOS v1 does not automate browser capture itself
 - adding the same remote URL again warns on conflict by default; use `force=true` to refresh that source in place
 - host-assisted inputs can be: the final accessible URL, a browser-exported local HTML file, or a host-prepared Markdown file
 - for browser-exported local HTML or Markdown, add a sidecar file named `<stem>.cognitiveos-source.json` beside the export to preserve the original remote URL and capture metadata
 
-Context-size warning:
+> [!WARNING]
+> `include_neighbors`, `include_content`, and `include_evidence` can expand returned context quickly.
+> Start narrow, then widen only when the initial result is clearly insufficient.
 
-- `include_neighbors`, `include_content`, and `include_evidence` can expand returned context very quickly
-- start narrow, then widen only when the initial result is clearly insufficient
-- for routine recall, prefer `include_neighbors=0` or `1`, `include_content=false`, and `include_evidence=false`
+For routine recall, prefer `include_neighbors=0` or `1`, `include_content=false`, and `include_evidence=false`.
 
-Search by keyword:
+### Search
 
 ```bash
 cognitiveos search --keyword CognitiveOS --top-k 5 --include-neighbors 1
@@ -201,7 +251,7 @@ Run hybrid search:
 cognitiveos search --query "graph memory runtime" --keyword CognitiveOS --top-k 5
 ```
 
-Run the MCP server over stdio:
+### MCP Transport
 
 ```bash
 cognitiveos-mcp --transport stdio --profile host-core
@@ -221,22 +271,26 @@ cognitiveos-mcp --transport streamable-http --profile host-core --host 0.0.0.0 -
 
 ## 🔌 Provider Configuration
 
-Embedding and chat providers are optional. When an embedding model is configured:
+Embedding and chat providers are optional.
+
+### What Changes When Providers Are Enabled
 
 - `add` performs similarity probing before insert unless `force=true`
 - `search --query ...` performs semantic search even without keywords
 - `search --query ... --keyword ...` performs hybrid ranking
 - missing node embeddings are lazily backfilled
 
-Provider role support:
+### Provider Support Matrix
 
-- `ollama`: chat, embeddings
-- `openai`: chat, embeddings
-- `gemini`: chat, embeddings
-- `anthropic`: chat only
-- `local_huggingface`: chat, embeddings, but requires `pip install 'cognitiveos[local-hf]'`
+| Provider | Chat | Embeddings | Notes |
+| --- | --- | --- | --- |
+| `ollama` | yes | yes | local-first default option |
+| `openai` | yes | yes | hosted API |
+| `gemini` | yes | yes | hosted API |
+| `anthropic` | yes | no | chat only |
+| `local_huggingface` | yes | yes | requires `pip install 'cognitiveos[local-hf]'` |
 
-Environment variables:
+### Environment Variables
 
 ```bash
 COGNITIVEOS_EMBEDDING_PROVIDER_TYPE=ollama
@@ -250,7 +304,7 @@ COGNITIVEOS_HYBRID_SEMANTIC_WEIGHT=0.65
 COGNITIVEOS_HYBRID_KEYWORD_WEIGHT=0.35
 ```
 
-Examples by provider:
+### Example Provider Setups
 
 ```bash
 # OpenAI
@@ -277,19 +331,19 @@ COGNITIVEOS_CHAT_API_KEY=...
 
 ## 🐳 Docker
 
-Build:
+### Build
 
 ```bash
 docker build -t cognitiveos:latest .
 ```
 
-Run:
+### Run
 
 ```bash
 docker run --rm -p 8000:8000 -v $(pwd)/data:/app/data cognitiveos:latest
 ```
 
-With a local `.env` file:
+### Use a Local `.env`
 
 ```bash
 cp .env.example .env
@@ -298,7 +352,14 @@ docker compose up --build
 
 ## 🛠 Operations
 
-Health report:
+### Runtime Checks
+
+| Goal | Command |
+| --- | --- |
+| Health report | `cognitiveos doctor` |
+| Live provider smoke test | `cognitiveos providers-test` |
+| Rebuild the vector index | `cognitiveos reindex-embeddings` |
+| Refresh one `source_document` | `cognitiveos refresh-source-document <node-id>` |
 
 ```bash
 cognitiveos doctor
@@ -322,7 +383,7 @@ Refresh one `source_document` from its original source path or URI:
 cognitiveos refresh-source-document <node-id>
 ```
 
-Generate host bootstrap and mount artifacts:
+### Host Bootstrap
 
 ```bash
 cognitiveos bootstrap-host
@@ -330,7 +391,7 @@ cognitiveos bootstrap-host
 
 This command generates local runtime bootstrap artifacts under `.cognitiveos/bootstrap/`. They are environment-specific and are not intended to be committed to the repository.
 
-Supported host kinds currently include:
+Supported host kinds:
 
 - `generic` as the default portable path
 - `codex` with project-level auto-install support
@@ -362,7 +423,14 @@ Install the Codex-specific cold-start mount into project files:
 cognitiveos bootstrap-host --host-kind codex --install
 ```
 
-Queue a dream run in the background:
+### Dream Operations
+
+| Goal | Command |
+| --- | --- |
+| Queue dream in background | `cognitiveos dream --background` |
+| Inspect dream status | `cognitiveos dream --inspect status` |
+| Inspect dream runs | `cognitiveos dream --inspect runs` |
+| Inspect pending tasks | `cognitiveos dream --inspect tasks` |
 
 ```bash
 cognitiveos dream --background
@@ -403,28 +471,30 @@ cognitiveos dream --task-id <task-id> --use-heuristic
 
 ## 🧱 Data Model
 
-Canonical node rules:
+### Canonical Node Rules
 
-- `node_type` carries structural type only
-- `durability` carries lifecycle tier only
-- `tags` are open retrieval labels only
-- `metadata` stores structured factual payload only
+| Field | Meaning |
+| --- | --- |
+| `node_type` | structural type only |
+| `durability` | lifecycle tier only |
+| `tags` | open retrieval labels |
+| `metadata` | structured factual payload |
 
-Current structural node types:
+### Structural Node Types
 
 - `memory`
 - `source_document`
 - `source_collection`
 - `super_node`
 
-Current durability tiers:
+### Durability Tiers
 
 - `working`
 - `durable`
 - `pinned`
 - `ephemeral`
 
-Common add parameters:
+### Common `add` Parameters
 
 - `payload`: the primary input body or locator
 - `name`: optional human-readable title stored on the node
@@ -432,7 +502,7 @@ Common add parameters:
 - `durability`: optional lifecycle override
 - `force`: bypass similarity or duplicate blocking where supported
 
-File ingestion keeps one durable node by default:
+### File Ingestion Defaults
 
 - local files keep extracted raw text in `source_document.content`
 - remote URLs keep a compact preservation note in `source_document.content`
@@ -446,7 +516,7 @@ File ingestion keeps one durable node by default:
 - binary remote snapshots stay preserved on disk and `read --include-content` falls back to the stored note instead of emitting raw bytes
 - browser-exported local HTML / Markdown with a sibling `<stem>.cognitiveos-source.json` manifest is ingested as a remote source instead of a plain `local_file`
 
-Browser-capture sidecar example:
+### Browser-Capture Sidecar Example
 
 ```json
 {
@@ -461,7 +531,7 @@ Browser-capture sidecar example:
 }
 ```
 
-Folder ingestion also keeps one durable node by default:
+### Folder Ingestion Defaults
 
 - `source_collection.content` stores a compact root summary, not a recursive file dump
 - `source_collection.description` stores a retrieval-oriented collection summary
@@ -471,7 +541,7 @@ Folder ingestion also keeps one durable node by default:
 - folder embeddings are built from `description + tags + compact collection hints`
 - `update` revises the stored summary only; it does not rescan the live folder
 
-Canonical edge rules:
+### Canonical Edge Rules
 
 - `strength_score` is the only runtime edge-strength field
 - edge lifecycle is controlled through `status` values such as `active`, `weak`, and `stale`
@@ -479,28 +549,32 @@ Canonical edge rules:
 
 ## 🌙 Dream Policy
 
-Dream becomes due when either condition is met:
+### Trigger Conditions
 
-- `10` new memory events have accumulated since the last completed dream
-- more than `24` hours have passed since the last completed dream and at least `5` new memory events have accumulated since that dream
+| Condition | Dream becomes due when |
+| --- | --- |
+| Event threshold | `10` new memory events have accumulated since the last completed dream |
+| Age threshold | more than `24` hours have passed since the last completed dream and at least `5` new events have accumulated |
 
-When a chat model is configured, CognitiveOS auto-triggers dream on the next memory operation after the threshold is met.
+### Runtime Behavior
 
-When that auto-trigger path can complete entirely inside the runtime, CognitiveOS queues dream in the background instead of blocking the current memory operation.
+- when a chat model is configured, CognitiveOS auto-triggers dream on the next memory operation after the threshold is met
+- when that auto-trigger path can complete entirely inside the runtime, CognitiveOS queues dream in the background instead of blocking the current operation
+- when the age window is reached but fewer than `5` new events exist, CognitiveOS emits a deferred reminder instead of auto-running dream
 
-When the age window is reached but fewer than `5` new events exist, CognitiveOS emits a deferred reminder instead of auto-running dream.
+### Compaction Priority
 
-Dream compaction priority is:
+1. `chat provider`
+2. `host agent`
+3. `heuristic fallback`
 
-- `chat provider`
-- `host agent`
-- `heuristic fallback`
+### Host Fallback
 
-When no chat model is configured, or when chat compaction fails during a dream run, CognitiveOS returns pending host compaction tasks with source data, a prepared digest, and a prompt for the host agent.
+- when no chat model is configured, or when chat compaction fails during a dream run, CognitiveOS returns pending host compaction tasks with source data, a prepared digest, and a prompt for the host agent
+- when no chat model is configured and dream is due, CognitiveOS emits a reminder on the next memory operation instead of auto-running dream
+- the reminder points the host to run `dream`, inspect pending compactions, and submit compressed clusters back through `dream`
 
-When no chat model is configured and dream is due, CognitiveOS emits a reminder on the next memory operation instead of auto-running dream. The reminder points the host to run `dream`, inspect pending compactions, and submit compressed clusters back through `dream` itself.
-
-For host-core integrations, `dream` is the single public dream entrypoint. It covers:
+### Public `dream` Entry Point
 
 - running a new dream job
 - inspecting current dream status
@@ -524,12 +598,21 @@ src/cognitiveos/
 
 ## 📝 Notes
 
-- Default runtime paths are user-level and host-agnostic under `~/.cognitiveos/`, so Codex, Claude Code, Gemini CLI, and other hosts can share one CognitiveOS runtime by default.
-- When you pass `--db-path`, CognitiveOS infers the shared runtime root from that database path and keeps `MEMORY.MD`, logs, and snapshots anchored to the same runtime.
-- Bootstrap artifacts remain project-local by default under `./.cognitiveos/bootstrap/`.
-- Override runtime locations explicitly with `COGNITIVEOS_HOME`, `COGNITIVEOS_DB_PATH`, and `COGNITIVEOS_MEMORY_OUTPUT_PATH` when needed.
-- `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`.
-- `bootstrap-host --host-kind codex --install` additionally writes a managed block into project-root `AGENTS.md` and `.codex/config.toml` for Codex-specific auto-mount, uses the reduced `codex-core` profile, and pins `--project-root`, `--db-path`, and `--memory-output-path` in the generated MCP config.
-- On first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the user the generated questions and submit them with `submit_host_onboarding` before depending on memory.
-- Files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts. Discover them through `host-bootstrap-status` or generate them with `bootstrap-host`; they are not meant to be repository-tracked source files.
+### Runtime Paths
+
+- default runtime paths are user-level and host-agnostic under `~/.cognitiveos/`
+- passing `--db-path` keeps `MEMORY.MD`, logs, and snapshots anchored to the same runtime root
+- bootstrap artifacts remain project-local by default under `./.cognitiveos/bootstrap/`
+- runtime locations can be overridden with `COGNITIVEOS_HOME`, `COGNITIVEOS_DB_PATH`, and `COGNITIVEOS_MEMORY_OUTPUT_PATH`
+
+### Bootstrap and Install
+
+- `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`
+- `bootstrap-host --host-kind codex --install` writes a managed block into project-root `AGENTS.md` and `.codex/config.toml`
+- the Codex install uses the reduced `codex-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`
+- on first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the generated questions and submit them with `submit_host_onboarding`
+- files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts and are not meant to be repository-tracked source files
+
+### Project Conventions
+
 - Durable engineering docs in this repository are kept in English.
