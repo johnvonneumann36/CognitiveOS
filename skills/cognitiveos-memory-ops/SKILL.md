@@ -1,11 +1,18 @@
 ---
 name: cognitiveos-memory-ops
-description: Use when a host needs to read, save, or update user-related memory in CognitiveOS. Prefer the supported CLI or MCP surface, load only the memory relevant to the current task, and keep only the most important durable preferences, profile facts, working patterns, goals, significant events, and reusable lessons or error workarounds.
+description: Load this skill at the start of every new user conversation to read, save, and update user memory in CognitiveOS. Prefer the supported CLI or MCP surface, load only the memory relevant to the current task, and keep only the most important durable preferences, profile facts, working patterns, goals, significant events, and reusable lessons or error workarounds.
 ---
 
 # CognitiveOS Memory Ops
 
 Use this skill when a host agent needs to operate memory through CognitiveOS rather than editing `MEMORY.MD` or SQLite directly.
+
+## Trigger Guidance
+
+- At the start of every new user conversation, load this skill first so the host can recall relevant CognitiveOS memory before responding.
+- Use it by default whenever the host should read known user profile/context, save durable new user information, or update existing long-term memory.
+- Keep retrieval targeted to the current conversation instead of loading broad memory context by default.
+
 ## Core Rules
 - Treat project-root `MEMORY.MD` as read-only baseline memory.
 - For first-time mount or onboarding details, start with `host-bootstrap-status`; if bootstrap artifacts do not exist yet, generate them with `bootstrap-host`, then use `submit-host-onboarding` when required. Use `host_kind=generic` unless you explicitly need a host-specific path such as Codex auto-install. These bootstrap files are runtime-generated local artifacts, not repository-tracked docs.

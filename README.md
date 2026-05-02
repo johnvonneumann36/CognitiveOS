@@ -74,6 +74,22 @@ Use this when CognitiveOS is being mounted into Codex:
 cognitiveos-mcp --transport stdio --profile codex-core
 ```
 
+To make Codex load the repository's memory skill for new conversations, copy the bundled skill into your user-level Codex skills directory:
+
+macOS / Linux:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R ./skills/cognitiveos-memory-ops ~/.codex/skills/cognitiveos-memory-ops
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.codex\skills" | Out-Null
+Copy-Item -Recurse -Force .\skills\cognitiveos-memory-ops "$HOME\.codex\skills\cognitiveos-memory-ops"
+```
+
 ### Repository Development
 
 Use this when you are developing CognitiveOS itself:
@@ -421,6 +437,22 @@ Install the Codex-specific cold-start mount into project files:
 
 ```bash
 cognitiveos bootstrap-host --host-kind codex --install
+```
+
+Optionally install the bundled Codex skill so new conversations can recall and save CognitiveOS memory through the documented workflow:
+
+macOS / Linux:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R ./skills/cognitiveos-memory-ops ~/.codex/skills/cognitiveos-memory-ops
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.codex\skills" | Out-Null
+Copy-Item -Recurse -Force .\skills\cognitiveos-memory-ops "$HOME\.codex\skills\cognitiveos-memory-ops"
 ```
 
 ### Dream Operations
