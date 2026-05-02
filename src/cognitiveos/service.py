@@ -25,7 +25,11 @@ from cognitiveos.dream import DreamCompiler
 from cognitiveos.exceptions import InvalidPayloadError
 from cognitiveos.extractors.defaults import DefaultContentExtractor
 from cognitiveos.graph_governance import GraphGovernanceEngine
-from cognitiveos.metadata_shapes import metadata_profile_kind, metadata_source_ref
+from cognitiveos.metadata_shapes import (
+    metadata_profile_kind,
+    metadata_profile_section,
+    metadata_source_ref,
+)
 from cognitiveos.models import (
     AddPayloadType,
     BootstrapBundle,
@@ -61,6 +65,18 @@ class CognitiveOSService:
     APP_STATE_BOOTSTRAP_ONBOARDING_NODE_IDS = "bootstrap_onboarding_node_ids"
     APP_STATE_BOOTSTRAP_HOST_INSTALLS = "bootstrap_host_installs"
     APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS = "bootstrap_host_memory_targets"
+    CANONICAL_PROFILE_SECTION_NAMES = {
+        "identity": "Bootstrap Identity",
+        "communication": "Bootstrap Communication Preferences",
+        "workspace": "Bootstrap Workspace Goal",
+        "engineering": "Engineering Collaboration Preferences",
+    }
+    CANONICAL_PROFILE_SECTION_TAGS = {
+        "identity": ["profile", "bootstrap"],
+        "communication": ["profile", "bootstrap"],
+        "workspace": ["profile", "bootstrap"],
+        "engineering": ["profile", "preferences", "engineering"],
+    }
     SUPPORTED_HOST_KINDS = {
         "generic",
         "codex",
@@ -345,6 +361,20 @@ class CognitiveOSService:
         if not content:
             raise InvalidPayloadError("Content payload cannot be empty.")
         self._validate_node_content_limit(content)
+        profile_section = self._infer_canonical_profile_section(
+            tags=merged_tags,
+            name=node_name,
+            content=content,
+        )
+        if profile_section is not None:
+            receipt = self._upsert_canonical_profile_memory(
+                section=profile_section,
+                content=content,
+                tags=merged_tags,
+                durability=durability,
+            )
+            receipt.notices = self._maybe_handle_dream("add")
+            return receipt
         node_type = self._infer_node_type(fallback="memory")
 
         embedding = self._embed_content(content)
@@ -1443,6 +1473,370 @@ class CognitiveOSService:
                 merged.append(cleaned)
         return merged
 
+    def _infer_canonical_profile_section(
+        self,
+        *,
+        tags: list[str],
+        name: str | None,
+        content: str,
+    ) -> str | None:
+        lowered_tags = {tag.strip().lower() for tag in tags if tag.strip()}
+        lowered_name = (name or "").strip().lower()
+        lowered_content = content.lower()
+
+        if (
+            "identity" in lowered_tags
+            or "identity" in lowered_name
+            or any(
+                marker in lowered_content
+                for marker in (
+                    "display_name=",
+                    "preferred name:",
+                    "full name:",
+                    "english_name=",
+                    "work_email=",
+                    "personal_email=",
+                    "timezone=",
+                )
+            )
+        ):
+            return "identity"
+
+        if (
+            "workspace" in lowered_tags
+            or "workspace" in lowered_name
+            or "work context" in lowered_name
+            or any(
+                marker in lowered_content
+                for marker in (
+                    "workspace goal:",
+                    "workspace_goal=",
+                    "primary repo path:",
+                    "primary_repo_path=",
+                    "common work types:",
+                    "common_work_types=",
+                    "filesystem boundary preference:",
+                    "filesystem_boundary_preference=",
+                )
+            )
+        ):
+            return "workspace"
+
+        if (
+            "engineering" in lowered_tags
+            or "engineering" in lowered_name
+            or any(
+                marker in lowered_content
+                for marker in (
+                    "primary_stack=",
+                    "common_platforms=",
+                    "coding_preferences=",
+                    "collaboration_preferences=",
+                    "avoidances=",
+                )
+            )
+        ):
+            return "engineering"
+
+        if (
+            "communication" in lowered_tags
+            or "preferences" in lowered_tags
+            or "communication" in lowered_name
+            or any(
+                marker in lowered_content
+                for marker in (
+                    "default language:",
+                    "preferred_language=",
+                    "response style:",
+                    "response_style=",
+                    "preferred_response_style=",
+                    "output preference:",
+                    "output_preferences=",
+                    "command preference:",
+                )
+            )
+        ):
+            return "communication"
+
+        return None
+
+    def _upsert_canonical_profile_memory(
+        self,
+        *,
+        section: str,
+        content: str,
+        tags: list[str],
+        durability: str | None,
+    ) -> Receipt:
+        existing_node = self._find_canonical_profile_node(section)
+        merged_tags = self._merge_tags(
+            self.CANONICAL_PROFILE_SECTION_TAGS.get(section, ["profile"]),
+            tags,
+        )
+        resolved_durability = (
+            self._normalize_durability(durability) if durability is not None else "pinned"
+        )
+        if existing_node is not None:
+            merged_content = self._merge_canonical_profile_content(
+                section=section,
+                existing_content=existing_node.content,
+                incoming_content=content,
+            )
+            next_metadata = self._canonical_profile_metadata(
+                section=section,
+                existing_metadata=existing_node.metadata,
+            )
+            audit_log_id = self.repository.overwrite_node(
+                NodeRecord(
+                    id=existing_node.id,
+                    name=self.CANONICAL_PROFILE_SECTION_NAMES.get(section, existing_node.name),
+                    description=self._summarize(merged_content),
+                    content=merged_content,
+                    embedding=self._embed_content(merged_content),
+                    tags=merged_tags,
+                    metadata=next_metadata,
+                    node_type="memory",
+                    durability=resolved_durability,
+                    last_reinforced_at=existing_node.last_reinforced_at,
+                ),
+                actor=self.settings.default_actor,
+                action_type="profile_upsert",
+            )
+            self._schedule_semantic_neighbor_refresh(existing_node.id)
+            return Receipt(
+                status="success",
+                action_taken="updated",
+                node_id=existing_node.id,
+                audit_log_id=audit_log_id,
+            )
+
+        merged_content = self._merge_canonical_profile_content(
+            section=section,
+            existing_content="",
+            incoming_content=content,
+        )
+        node = NodeRecord(
+            id=f"node_{uuid4().hex}",
+            name=self.CANONICAL_PROFILE_SECTION_NAMES.get(section),
+            description=self._summarize(merged_content),
+            content=merged_content,
+            embedding=self._embed_content(merged_content),
+            tags=merged_tags,
+            metadata=self._canonical_profile_metadata(section=section),
+            node_type="memory",
+            durability=resolved_durability,
+        )
+        audit_log_id = self.repository.create_node(
+            node,
+            actor=self.settings.default_actor,
+            action_type="profile_create",
+        )
+        self._schedule_semantic_neighbor_refresh(node.id)
+        return Receipt(
+            status="success",
+            action_taken="created",
+            node_id=node.id,
+            audit_log_id=audit_log_id,
+        )
+
+    def _find_canonical_profile_node(self, section: str) -> NodeRecord | None:
+        name_fallback = self.CANONICAL_PROFILE_SECTION_NAMES.get(section, "")
+        for node in self.repository.list_all_nodes():
+            if node.node_type != "memory":
+                continue
+            if metadata_profile_section(node.metadata) == section:
+                return node
+            if node.name == name_fallback:
+                return node
+        return None
+
+    def _canonical_profile_metadata(
+        self,
+        *,
+        section: str,
+        existing_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        metadata = dict(existing_metadata or {})
+        profile_payload = (
+            dict(metadata.get("profile"))
+            if isinstance(metadata.get("profile"), dict)
+            else {}
+        )
+        bootstrap_section = section if section in {"identity", "communication", "workspace"} else None
+        metadata["profile"] = {
+            **profile_payload,
+            "kind": "system" if bootstrap_section else "user",
+            "bootstrap": bool(bootstrap_section),
+            "canonical": True,
+            "section": section,
+        }
+        if bootstrap_section:
+            metadata["bootstrap_section"] = bootstrap_section
+        return metadata
+
+    def _merge_canonical_profile_content(
+        self,
+        *,
+        section: str,
+        existing_content: str,
+        incoming_content: str,
+    ) -> str:
+        merged_lines: dict[str, str] = {}
+        extra_lines: list[str] = []
+        for source in (existing_content, incoming_content):
+            for raw_line in source.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                key, value = self._split_profile_line(line)
+                if key is None:
+                    if line not in extra_lines:
+                        extra_lines.append(line)
+                    continue
+                canonical_key = self._canonical_profile_field_key(section=section, key=key)
+                merged_lines[canonical_key] = value
+
+        ordered_fields = self._canonical_profile_field_order(section)
+        rendered: list[str] = []
+        for field_key in ordered_fields:
+            value = merged_lines.pop(field_key, None)
+            if value is None:
+                continue
+            rendered.append(f"{self._canonical_profile_field_label(section=section, key=field_key)}: {value}")
+        for field_key, value in merged_lines.items():
+            rendered.append(
+                f"{self._canonical_profile_field_label(section=section, key=field_key)}: {value}"
+            )
+        rendered.extend(extra_lines)
+        return "\n".join(rendered)
+
+    @staticmethod
+    def _split_profile_line(line: str) -> tuple[str | None, str | None]:
+        delimiter = ":" if ":" in line else "=" if "=" in line else None
+        if delimiter is None:
+            return None, None
+        key, value = line.split(delimiter, 1)
+        normalized_key = " ".join(key.strip().lower().replace("_", " ").split())
+        clean_value = value.strip()
+        if not normalized_key or not clean_value:
+            return None, None
+        return normalized_key, clean_value
+
+    @staticmethod
+    def _canonical_profile_field_order(section: str) -> list[str]:
+        orders = {
+            "identity": [
+                "preferred name",
+                "full name",
+                "english name",
+                "role",
+                "team",
+                "employer",
+                "location",
+                "timezone",
+                "locale encoding",
+                "work email",
+                "personal email",
+            ],
+            "communication": [
+                "default language",
+                "response style",
+                "output preference",
+                "command preference",
+            ],
+            "workspace": [
+                "workspace goal",
+                "primary repo path",
+                "common work types",
+                "common frameworks",
+                "filesystem boundary preference",
+            ],
+            "engineering": [
+                "primary stack",
+                "common platforms",
+                "coding preferences",
+                "collaboration preferences",
+                "avoidances",
+            ],
+        }
+        return orders.get(section, [])
+
+    @staticmethod
+    def _canonical_profile_field_key(*, section: str, key: str) -> str:
+        aliases = {
+            "identity": {
+                "display name": "full name",
+                "preferred name": "preferred name",
+                "full name": "full name",
+                "english name": "english name",
+                "role": "role",
+                "role or team": "team",
+                "team": "team",
+                "employer": "employer",
+                "location": "location",
+                "timezone": "timezone",
+                "locale encoding": "locale encoding",
+                "work email": "work email",
+                "personal email": "personal email",
+            },
+            "communication": {
+                "default language": "default language",
+                "preferred language": "default language",
+                "response style": "response style",
+                "preferred response style": "response style",
+                "output preference": "output preference",
+                "output preferences": "output preference",
+                "command preference": "command preference",
+            },
+            "workspace": {
+                "workspace goal": "workspace goal",
+                "workspace context": "workspace goal",
+                "primary repo path": "primary repo path",
+                "common work types": "common work types",
+                "common frameworks": "common frameworks",
+                "filesystem boundary preference": "filesystem boundary preference",
+            },
+            "engineering": {
+                "primary stack": "primary stack",
+                "common platforms": "common platforms",
+                "coding preferences": "coding preferences",
+                "collaboration preferences": "collaboration preferences",
+                "avoidances": "avoidances",
+            },
+        }
+        return aliases.get(section, {}).get(key, key)
+
+    @staticmethod
+    def _canonical_profile_field_label(*, section: str, key: str) -> str:
+        labels = {
+            "preferred name": "Preferred name",
+            "full name": "Full name",
+            "english name": "English name",
+            "role": "Role",
+            "team": "Team",
+            "employer": "Employer",
+            "location": "Location",
+            "timezone": "Timezone",
+            "locale encoding": "Locale encoding",
+            "work email": "Work email",
+            "personal email": "Personal email",
+            "default language": "Default language",
+            "response style": "Response style",
+            "output preference": "Output preference",
+            "command preference": "Command preference",
+            "workspace goal": "Workspace goal",
+            "primary repo path": "Primary repo path",
+            "common work types": "Common work types",
+            "common frameworks": "Common frameworks",
+            "filesystem boundary preference": "Filesystem boundary preference",
+            "primary stack": "Primary stack",
+            "common platforms": "Common platforms",
+            "coding preferences": "Coding preferences",
+            "collaboration preferences": "Collaboration preferences",
+            "avoidances": "Avoidances",
+        }
+        return labels.get(key, key.title())
+
     def _resolve_node_durability(self, *, durability: str | None, node_type: str) -> str:
         if durability is not None:
             return self._normalize_durability(durability)
@@ -2382,7 +2776,7 @@ class CognitiveOSService:
                 "section_id": "workspace_goal",
                 "name": "Bootstrap Workspace Goal",
                 "content": "\n".join(goal_lines),
-                "metadata": {"bootstrap_section": "workspace_goal"},
+                "metadata": {"bootstrap_section": "workspace"},
             },
         ]
 
@@ -2399,6 +2793,8 @@ class CognitiveOSService:
             "profile": {
                 "kind": "system",
                 "bootstrap": True,
+                "canonical": True,
+                "section": str(metadata.get("bootstrap_section") or ""),
             },
         }
         if node_id:
@@ -2410,7 +2806,10 @@ class CognitiveOSService:
                     description=self._summarize(content),
                     content=content,
                     embedding=self._embed_content(content),
-                    tags=["profile", "bootstrap"],
+                    tags=self.CANONICAL_PROFILE_SECTION_TAGS.get(
+                        str(metadata.get("bootstrap_section") or ""),
+                        ["profile", "bootstrap"],
+                    ),
                     metadata=combined_metadata,
                     node_type="memory",
                     durability="pinned",
@@ -2427,7 +2826,10 @@ class CognitiveOSService:
             description=self._summarize(content),
             content=content,
             embedding=self._embed_content(content),
-            tags=["profile", "bootstrap"],
+            tags=self.CANONICAL_PROFILE_SECTION_TAGS.get(
+                str(metadata.get("bootstrap_section") or ""),
+                ["profile", "bootstrap"],
+            ),
             metadata=combined_metadata,
             node_type="memory",
             durability="pinned",
@@ -2630,15 +3032,20 @@ class CognitiveOSService:
                     "`add`/`update`/`link` for writes."
                 ),
                 (
-                    "6. If a response includes a dream reminder and the host "
+                    "6. For profile writes, update canonical nodes instead of creating "
+                    "parallel ones: `Bootstrap Identity`, `Bootstrap Communication Preferences`, "
+                    "`Bootstrap Workspace Goal`, and `Engineering Collaboration Preferences`."
+                ),
+                (
+                    "7. If a response includes a dream reminder and the host "
                     "supports background agents, delegate `dream` in the background."
                 ),
                 (
-                    "7. If a dream run returns pending compactions, resolve them "
+                    "8. If a dream run returns pending compactions, resolve them "
                     "through `dream` itself using the returned task payload rather "
                     "than manual file edits."
                 ),
-                f"8. Host kind for this install target: `{host_kind}`.",
+                f"9. Host kind for this install target: `{host_kind}`.",
                 "",
                 "Parameter recipes:",
                 (
@@ -2705,11 +3112,15 @@ class CognitiveOSService:
                     "over ad hoc filesystem parsing."
                 ),
                 (
-                    "5. If any response includes a dream reminder and the host supports background "
+                    "5. For profile writes, update canonical nodes instead of creating parallel "
+                    "ones for identity, communication, workspace, or engineering preferences."
+                ),
+                (
+                    "6. If any response includes a dream reminder and the host supports background "
                     "subagents, delegate the `dream` task to a background subagent."
                 ),
                 (
-                    "6. If a dream run returns pending compactions, have the host agent compress "
+                    "7. If a dream run returns pending compactions, have the host agent compress "
                     "those clusters and submit the resolution back through `dream`."
                 ),
                 "",

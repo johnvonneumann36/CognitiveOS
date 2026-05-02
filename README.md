@@ -240,6 +240,7 @@ cognitiveos add --type file --payload ".\\exports\\article.html"
 > [!TIP]
 > Use repeated `--tag` for retrieval labels.
 > Use `--name` when the node should keep a stable human-readable title.
+> Profile-oriented writes such as identity, communication preferences, workspace context, and engineering preferences are merged into canonical profile nodes instead of creating overlapping duplicates.
 
 Source-handling notes:
 

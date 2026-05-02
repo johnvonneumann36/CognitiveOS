@@ -17,6 +17,12 @@ Use this skill when a host agent needs to operate memory through CognitiveOS rat
 - Treat project-root `MEMORY.MD` as read-only baseline memory.
 - For first-time mount or onboarding details, start with `host-bootstrap-status`; if bootstrap artifacts do not exist yet, generate them with `bootstrap-host`, then use `submit-host-onboarding` when required. Use `host_kind=generic` unless you explicitly need a host-specific path such as Codex auto-install. These bootstrap files are runtime-generated local artifacts, not repository-tracked docs.
 - Start with `search`, then `read` only the node ids you actually need.
+- Canonical profile routing:
+  - identity-like writes -> `Bootstrap Identity`
+  - communication/output-style writes -> `Bootstrap Communication Preferences`
+  - workspace-context writes -> `Bootstrap Workspace Goal`
+  - engineering-preference writes -> `Engineering Collaboration Preferences`
+- Do not create a parallel profile node when one of those canonical nodes already exists; update/merge it instead.
 - Keep retrieval narrow by default: `include_neighbors=0` or `1`, `include_content=false`, `include_evidence=false`.
 - `include_neighbors > 1`, `include_content=true`, or `include_evidence=true` can expand context very quickly.
 - Keep writes high signal: store durable preferences, profile facts, goals, significant events, stable source anchors, and reusable lessons. Skip transient chatter.

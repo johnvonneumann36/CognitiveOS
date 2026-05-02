@@ -162,3 +162,16 @@ def metadata_profile_kind(metadata: dict[str, Any]) -> str | None:
         kind = profile.get("kind")
         return str(kind) if kind else None
     return None
+
+
+def metadata_profile_section(metadata: dict[str, Any]) -> str | None:
+    normalized = normalize_node_metadata(metadata)
+    profile = normalized.get("profile")
+    if isinstance(profile, dict):
+        section = profile.get("section")
+        if section:
+            return str(section)
+    bootstrap_section = normalized.get("bootstrap_section")
+    if bootstrap_section:
+        return str(bootstrap_section)
+    return None
