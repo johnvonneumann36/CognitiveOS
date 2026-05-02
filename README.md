@@ -641,7 +641,8 @@ src/cognitiveos/
 
 - `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`
 - `bootstrap-host --host-kind codex --install` writes a managed block into project-root `AGENTS.md` and `.codex/config.toml`
-- the Codex install uses the reduced `codex-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`
+- the Codex install uses the reduced `codex-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`; CognitiveOS keeps the shared runtime `MEMORY.MD` in sync while also writing a host-project `MEMORY.MD` for Codex
+- named host bootstrap targets such as `codex`, `claude-code`, `claude-desktop`, `gemini-cli`, and `cursor` register a host-project `MEMORY.MD` mirror so future snapshot and dream sync can fan out across host workspaces
 - on first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the generated questions and submit them with `submit_host_onboarding`
 - files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts and are not meant to be repository-tracked source files
 

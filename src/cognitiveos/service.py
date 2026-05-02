@@ -60,6 +60,7 @@ class CognitiveOSService:
     APP_STATE_BOOTSTRAP_ONBOARDING_ANSWERS = "bootstrap_onboarding_answers"
     APP_STATE_BOOTSTRAP_ONBOARDING_NODE_IDS = "bootstrap_onboarding_node_ids"
     APP_STATE_BOOTSTRAP_HOST_INSTALLS = "bootstrap_host_installs"
+    APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS = "bootstrap_host_memory_targets"
     SUPPORTED_HOST_KINDS = {
         "generic",
         "codex",
@@ -960,8 +961,13 @@ class CognitiveOSService:
 
     def compile_memory_snapshot(self, output_path: Path | None = None) -> Path:
         self.initialize()
-        target_path = output_path or self.settings.memory_output_path
-        return self.governance.compile_memory_snapshot(target_path)
+        target_path = (output_path or self.settings.memory_output_path).resolve()
+        compiled_path = self.governance.compile_memory_snapshot(target_path)
+        for mirror_path in self._registered_memory_output_paths(primary_path=compiled_path):
+            if mirror_path == compiled_path:
+                continue
+            self.governance.compile_memory_snapshot(mirror_path)
+        return compiled_path
 
     def get_host_bootstrap_status(
         self,
@@ -971,6 +977,7 @@ class CognitiveOSService:
     ) -> HostBootstrapStatus:
         self.initialize()
         normalized_host_kind = self._normalize_host_kind(host_kind)
+        memory_path = self._host_memory_output_path(host_kind=normalized_host_kind)
         bootstrap_dir = output_dir or self.settings.bootstrap_dir
         bootstrap_dir.mkdir(parents=True, exist_ok=True)
         artifact_paths = self._bootstrap_artifact_paths(
@@ -1023,7 +1030,7 @@ class CognitiveOSService:
             installed=installed,
             needs_mount=not installed,
             installed_at=install_record.get("installed_at") if install_record else None,
-            memory_path=str(self.settings.memory_output_path),
+            memory_path=str(memory_path),
             bootstrap_prompt_path=str(artifact_paths["bootstrap_prompt_path"]),
             system_prompt_path=str(artifact_paths["system_prompt_path"]),
             mount_manifest_path=str(artifact_paths["mount_manifest_path"]),
@@ -1034,7 +1041,7 @@ class CognitiveOSService:
                 str(host_project_config_path) if host_project_config_path else None
             ),
             system_prompt_block=self._host_system_prompt(
-                self.settings.memory_output_path,
+                memory_path,
                 host_kind=normalized_host_kind,
             ),
             onboarding_questions=questions,
@@ -1111,7 +1118,13 @@ class CognitiveOSService:
     ) -> BootstrapBundle:
         self.initialize()
         normalized_host_kind = self._normalize_host_kind(host_kind)
-        memory_path = self.compile_memory_snapshot()
+        memory_path = self.compile_memory_snapshot(
+            output_path=self._host_memory_output_path(host_kind=normalized_host_kind)
+        )
+        self._register_host_memory_target(
+            host_kind=normalized_host_kind,
+            memory_output_path=memory_path,
+        )
         bootstrap_dir = output_dir or self.settings.bootstrap_dir
         bootstrap_dir.mkdir(parents=True, exist_ok=True)
         artifact_paths = self._bootstrap_artifact_paths(
@@ -1149,7 +1162,7 @@ class CognitiveOSService:
             "host_kind": normalized_host_kind,
             "memory_path": str(memory_path),
             "mcp_command": "cognitiveos-mcp",
-            "mcp_args": self._host_mcp_args(),
+            "mcp_args": self._host_mcp_args(host_kind=normalized_host_kind),
             "bootstrap_status": {
                 "first_startup": status.first_startup,
                 "needs_onboarding": status.needs_onboarding,
@@ -2433,6 +2446,36 @@ class CognitiveOSService:
             return record
         return None
 
+    def _registered_memory_output_paths(self, *, primary_path: Path) -> list[Path]:
+        ordered_paths: list[Path] = [primary_path.resolve()]
+        if self.settings.memory_output_path.resolve() not in ordered_paths:
+            ordered_paths.append(self.settings.memory_output_path.resolve())
+        targets = self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS) or {}
+        for host_kind, record in targets.items():
+            if not isinstance(record, dict):
+                continue
+            value = record.get("memory_output_path")
+            if isinstance(value, str) and value.strip():
+                candidate = Path(value).expanduser().resolve()
+            elif isinstance(host_kind, str) and host_kind.strip():
+                candidate = self._host_memory_output_path(host_kind=host_kind)
+            else:
+                continue
+            if candidate not in ordered_paths:
+                ordered_paths.append(candidate)
+        return ordered_paths
+
+    def _register_host_memory_target(self, *, host_kind: str, memory_output_path: Path) -> None:
+        targets = (
+            self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS) or {}
+        )
+        targets[host_kind] = {
+            "registered_at": datetime.now(UTC).isoformat(),
+            "project_root": str(self._project_root()),
+            "memory_output_path": str(memory_output_path.resolve()),
+        }
+        self.repository.set_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS, targets)
+
     def _host_installation_exists(
         self,
         host_kind: str,
@@ -2486,6 +2529,7 @@ class CognitiveOSService:
             "installed_at": datetime.now(UTC).isoformat(),
             "host_instruction_path": str(host_instruction_path),
             "host_project_config_path": str(host_project_config_path),
+            "memory_output_path": str(self._host_memory_output_path(host_kind=host_kind)),
         }
         self.repository.set_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_INSTALLS, installs)
         return True
@@ -2531,6 +2575,7 @@ class CognitiveOSService:
         )
 
     def _codex_project_config_block(self) -> str:
+        memory_output_path = self._host_memory_output_path(host_kind="codex")
         return "\n".join(
             [
                 "[mcp_servers.cognitiveos]",
@@ -2545,7 +2590,7 @@ class CognitiveOSService:
                 '  "--db-path",',
                 f'  "{self.settings.db_path}",',
                 '  "--memory-output-path",',
-                f'  "{self.settings.memory_output_path}",',
+                f'  "{memory_output_path}",',
                 "]",
                 "startup_timeout_ms = 20000",
             ]
@@ -2680,7 +2725,14 @@ class CognitiveOSService:
             return "codex-core"
         return "host-core"
 
+    def _host_memory_output_path(self, *, host_kind: str = "generic") -> Path:
+        normalized = host_kind.strip().lower().replace("-", "_")
+        if normalized != "generic":
+            return self._project_root() / "MEMORY.MD"
+        return self.settings.memory_output_path
+
     def _host_mcp_args(self, *, host_kind: str = "generic") -> list[str]:
+        memory_output_path = self._host_memory_output_path(host_kind=host_kind)
         return [
             "--transport",
             "stdio",
@@ -2691,7 +2743,7 @@ class CognitiveOSService:
             "--db-path",
             str(self.settings.db_path),
             "--memory-output-path",
-            str(self.settings.memory_output_path),
+            str(memory_output_path),
         ]
 
     def _host_mcp_command(self, *, host_kind: str = "generic") -> str:
