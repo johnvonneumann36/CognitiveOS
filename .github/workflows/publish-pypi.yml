@@ -55,6 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+      PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -78,7 +82,7 @@ jobs:
         run: echo "cognitiveos==${{ needs.build.outputs.version }} already exists on PyPI; skipping publish."
 
       - name: Publish to PyPI with API token
-        if: steps.pypi_check.outputs.exists != 'true' && secrets.PYPI_API_TOKEN != ''
+        if: steps.pypi_check.outputs.exists != 'true' && env.PYPI_API_TOKEN != ''
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
@@ -86,7 +90,7 @@ jobs:
           skip-existing: true
 
       - name: Publish to PyPI with username and password
-        if: steps.pypi_check.outputs.exists != 'true' && secrets.PYPI_API_TOKEN == '' && secrets.PYPI_USERNAME != '' && secrets.PYPI_PASSWORD != ''
+        if: steps.pypi_check.outputs.exists != 'true' && env.PYPI_API_TOKEN == '' && env.PYPI_USERNAME != '' && env.PYPI_PASSWORD != ''
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: ${{ secrets.PYPI_USERNAME }}
@@ -94,5 +98,5 @@ jobs:
           skip-existing: true
 
       - name: Publish to PyPI with trusted publishing
-        if: steps.pypi_check.outputs.exists != 'true' && secrets.PYPI_API_TOKEN == '' && (secrets.PYPI_USERNAME == '' || secrets.PYPI_PASSWORD == '')
+        if: steps.pypi_check.outputs.exists != 'true' && env.PYPI_API_TOKEN == '' && (env.PYPI_USERNAME == '' || env.PYPI_PASSWORD == '')
         uses: pypa/gh-action-pypi-publish@release/v1
