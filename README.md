@@ -29,10 +29,10 @@
 </p>
 
 > [!IMPORTANT]
-> `v0.1.2` is live on PyPI: `pip install cognitiveos`
+> `v0.1.3` is live on PyPI: `pip install cognitiveos`
 >
-> For Codex mounts, prefer `--profile codex-core`.
-> `codex-core` exposes `search`, `read`, `add`, `update`, `link`, and `dream`,
+> For compact host mounts, prefer `--profile compact-core`.
+> `compact-core` exposes `search`, `read`, `add`, `update`, `link`, and `dream`,
 > while intentionally omitting `unlink`.
 
 This repository is a production-oriented project skeleton for a local-first agent memory runtime.
@@ -42,7 +42,7 @@ At a glance:
 | Need | Use | Why |
 | --- | --- | --- |
 | Install CognitiveOS quickly | `pip install cognitiveos` | Fastest path to a working local runtime |
-| Mount into Codex safely | `cognitiveos-mcp --profile codex-core` | Smaller tool surface, clearer prompts |
+| Mount into a compact host surface | `cognitiveos-mcp --profile compact-core` | Smaller tool surface, clearer prompts |
 | Run a general MCP host | `cognitiveos-mcp --profile host-core` | Full core memory workflow including `unlink` |
 | Explore docs and releases | GitHub docs and release pages | Best entry point for release notes and implementation details |
 
@@ -66,12 +66,12 @@ cognitiveos init-db
 cognitiveos-mcp --transport stdio --profile host-core
 ```
 
-### Codex Mount
+### Compact Host Mount
 
-Use this when CognitiveOS is being mounted into Codex:
+Use this when CognitiveOS is being mounted into a host that benefits from a smaller tool surface:
 
 ```bash
-cognitiveos-mcp --transport stdio --profile codex-core
+cognitiveos-mcp --transport stdio --profile compact-core
 ```
 
 To make Codex load the repository's memory skill for new conversations, copy the bundled skill into your user-level Codex skills directory:
@@ -104,7 +104,7 @@ pip install -e ".[dev]"
 
 | Profile | Intended use | Public tools |
 | --- | --- | --- |
-| `codex-core` | Codex auto-mount | `search`, `read`, `add`, `update`, `link`, `dream` |
+| `compact-core` | Compact host mounts | `search`, `read`, `add`, `update`, `link`, `dream` |
 | `host-core` | General MCP hosts | `search`, `read`, `add`, `update`, `link`, `unlink`, `dream` |
 | `operator` | Maintenance / graph operations | core tools plus relationship and provider operations |
 | `bootstrap` | Onboarding and host install flows | bootstrap-only tools |
@@ -177,7 +177,7 @@ The current milestone is an MVP foundation with working runtime, retrieval, and 
 | Ingestion | content, local files, folders, remote URLs, remote snapshot preservation |
 | Graph updates | `add`, `update`, `link`, audit tracing, canonical node and edge semantics |
 | Dream flow | clustering, chat-first compaction, host fallback tasks, `MEMORY.MD` generation |
-| Host integration | CLI, MCP, bootstrap bundle generation, Codex auto-install support |
+| Host integration | CLI, MCP, bootstrap bundle generation, managed host install support |
 | Operations | health checks, provider smoke tests, embedding reindexing, background jobs |
 
 Highlights:
@@ -211,7 +211,7 @@ cognitiveos-mcp --transport stdio --profile host-core
 | Search by keyword | `cognitiveos search --keyword CognitiveOS --top-k 5` |
 | Search by semantic query | `cognitiveos search --query "graph memory runtime"` |
 | Start MCP over stdio | `cognitiveos-mcp --transport stdio --profile host-core` |
-| Start Codex-safe MCP profile | `cognitiveos-mcp --transport stdio --profile codex-core` |
+| Start compact MCP profile | `cognitiveos-mcp --transport stdio --profile compact-core` |
 
 ### Add Memory
 
@@ -274,10 +274,10 @@ cognitiveos search --query "graph memory runtime" --keyword CognitiveOS --top-k 
 cognitiveos-mcp --transport stdio --profile host-core
 ```
 
-For Codex-specific mounts, use the reduced tool surface:
+For compact host mounts, use the reduced tool surface:
 
 ```bash
-cognitiveos-mcp --transport stdio --profile codex-core
+cognitiveos-mcp --transport stdio --profile compact-core
 ```
 
 Run the MCP server over Streamable HTTP:
@@ -434,13 +434,13 @@ cognitiveos submit-host-onboarding \
   --answer workspace_goal="Build CognitiveOS as a host-facing memory runtime"
 ```
 
-Install the Codex-specific cold-start mount into project files:
+Install the managed cold-start mount into project files for a supported host target:
 
 ```bash
 cognitiveos bootstrap-host --host-kind codex --install
 ```
 
-Optionally install the bundled Codex skill so new conversations can recall and save CognitiveOS memory through the documented workflow:
+Optionally install the bundled skill into Codex so new conversations can recall and save CognitiveOS memory through the documented workflow:
 
 macOS / Linux:
 
@@ -642,8 +642,8 @@ src/cognitiveos/
 
 - `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`
 - `bootstrap-host --host-kind codex --install` writes a managed block into project-root `AGENTS.md` and `.codex/config.toml`
-- the Codex install uses the reduced `codex-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`; CognitiveOS keeps the shared runtime `MEMORY.MD` in sync while also writing a host-project `MEMORY.MD` for Codex
-- named host bootstrap targets such as `codex`, `claude-code`, `claude-desktop`, `gemini-cli`, and `cursor` register a host-project `MEMORY.MD` mirror so future snapshot and dream sync can fan out across host workspaces
+- the managed install uses the reduced `compact-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`; for Codex, the mounted memory file is `~/.codex/MEMORY.MD` instead of a project-root `MEMORY.MD`
+- named host bootstrap targets remain registered memory outputs so future snapshot and dream sync can fan out across installed host surfaces
 - on first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the generated questions and submit them with `submit_host_onboarding`
 - files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts and are not meant to be repository-tracked source files
 

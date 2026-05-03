@@ -14,8 +14,8 @@ Use this skill when a host agent needs to operate memory through CognitiveOS rat
 - Keep retrieval targeted to the current conversation instead of loading broad memory context by default.
 
 ## Core Rules
-- Treat project-root `MEMORY.MD` as read-only baseline memory.
-- For first-time mount or onboarding details, start with `host-bootstrap-status`; if bootstrap artifacts do not exist yet, generate them with `bootstrap-host`, then use `submit-host-onboarding` when required. Use `host_kind=generic` unless you explicitly need a host-specific path such as Codex auto-install. These bootstrap files are runtime-generated local artifacts, not repository-tracked docs.
+- Treat the installed host memory file as read-only baseline memory. Its path comes from the bootstrap output.
+- For first-time mount or onboarding details, start with `host-bootstrap-status`; if bootstrap artifacts do not exist yet, generate them with `bootstrap-host`, then use `submit-host-onboarding` when required. Use `host_kind=generic` unless you explicitly need a managed host install target. These bootstrap files are runtime-generated local artifacts, not repository-tracked docs.
 - Start with `search`, then `read` only the node ids you actually need.
 - Canonical profile routing:
   - identity-like writes -> `Bootstrap Identity`
@@ -27,7 +27,7 @@ Use this skill when a host agent needs to operate memory through CognitiveOS rat
 - `include_neighbors > 1`, `include_content=true`, or `include_evidence=true` can expand context very quickly.
 - Keep writes high signal: store durable preferences, profile facts, goals, significant events, stable source anchors, and reusable lessons. Skip transient chatter.
 - Prefer one compact root anchor for a repository or large folder, not many file-level writes.
-- For project changes, migrations, release notes, or refactor milestones, prefer concise `content` memories instead of repeatedly overwriting the project root.
+- For project changes, migrations, release notes, or refactor milestones, prefer concise `content` memories instead of repeatedly overwriting the host memory file.
 
 Default MCP command:
 ```bash

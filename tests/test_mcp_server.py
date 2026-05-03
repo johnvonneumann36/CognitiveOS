@@ -14,14 +14,12 @@ class FakeEmbeddingProvider:
         embeddings: list[list[float]] = []
         for text in texts:
             lowered = text.lower()
-            embeddings.append(
-                [
-                    1.0 if "graph" in lowered else 0.0,
-                    1.0 if "memory" in lowered else 0.0,
-                    1.0 if "runtime" in lowered else 0.0,
-                    1.0 if "tooling" in lowered else 0.0,
-                ]
-            )
+            embedding = [0.0] * 1024
+            embedding[0] = 1.0 if "graph" in lowered else 0.0
+            embedding[1] = 1.0 if "memory" in lowered else 0.0
+            embedding[2] = 1.0 if "runtime" in lowered else 0.0
+            embedding[3] = 1.0 if "tooling" in lowered else 0.0
+            embeddings.append(embedding)
         return embeddings
 
 
@@ -47,8 +45,8 @@ def test_host_core_profile_exposes_only_compact_memory_surface(tmp_path: Path) -
     }
 
 
-def test_codex_core_profile_exposes_minimal_memory_surface(tmp_path: Path) -> None:
-    tool_names = _tool_names(db_path=tmp_path / "codex-core.db", profile="codex-core")
+def test_compact_core_profile_exposes_minimal_memory_surface(tmp_path: Path) -> None:
+    tool_names = _tool_names(db_path=tmp_path / "compact-core.db", profile="compact-core")
 
     assert tool_names == {
         "search",

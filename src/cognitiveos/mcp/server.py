@@ -10,13 +10,13 @@ from cognitiveos.models import AddPayloadType
 from cognitiveos.service import CognitiveOSService
 
 HOST_CORE_PROFILE = "host-core"
-CODEX_CORE_PROFILE = "codex-core"
+COMPACT_CORE_PROFILE = "compact-core"
 BOOTSTRAP_PROFILE = "bootstrap"
 OPERATOR_PROFILE = "operator"
 FULL_PROFILE = "full"
 SUPPORTED_SERVER_PROFILES = {
     HOST_CORE_PROFILE,
-    CODEX_CORE_PROFILE,
+    COMPACT_CORE_PROFILE,
     BOOTSTRAP_PROFILE,
     OPERATOR_PROFILE,
     FULL_PROFILE,
@@ -34,13 +34,13 @@ def build_server(settings: AppSettings) -> FastMCP:
         )
     expose_memory_core = profile in {
         HOST_CORE_PROFILE,
-        CODEX_CORE_PROFILE,
+        COMPACT_CORE_PROFILE,
         OPERATOR_PROFILE,
         FULL_PROFILE,
     }
     expose_memory_mutations = profile in {
         HOST_CORE_PROFILE,
-        CODEX_CORE_PROFILE,
+        COMPACT_CORE_PROFILE,
         OPERATOR_PROFILE,
         FULL_PROFILE,
     }

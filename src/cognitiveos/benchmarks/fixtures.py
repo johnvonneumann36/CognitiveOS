@@ -73,7 +73,7 @@ def materialize_fixture_files(base_dir: Path) -> dict[str, Path]:
             (
                 "# Bootstrap Guide\n\n"
                 "The bootstrap-host command writes host-bootstrap.md, mount-manifest.json, "
-                "and mcp-server.json. Codex installation also writes AGENTS.md and "
+                "and mcp-server.json. Managed host installation also writes AGENTS.md and "
                 ".codex/config.toml so the host can mount CognitiveOS cleanly.\n"
             ),
         ),
@@ -121,18 +121,18 @@ DEFAULT_BENCHMARK_CORPUS = BenchmarkCorpusFixture(
             name="Bootstrap Artifacts",
             payload=(
                 "The bootstrap-host command writes host-bootstrap.md, mount-manifest.json, "
-                "and mcp-server.json for Codex and other hosts."
+                "and mcp-server.json for managed and manual host targets."
             ),
             tags=("bootstrap", "host"),
         ),
         ContentNodeFixture(
             key="codex_mount",
-            name="Codex Mount",
+            name="Managed Host Mount",
             payload=(
-                "Codex installation writes AGENTS.md and .codex/config.toml so the host "
+                "Managed host installation writes AGENTS.md and .codex/config.toml so the host "
                 "can mount memory and register CognitiveOS."
             ),
-            tags=("codex", "mount"),
+            tags=("host", "mount"),
         ),
         ContentNodeFixture(
             key="read_write_flow",
@@ -227,7 +227,7 @@ DEFAULT_BENCHMARK_CORPUS = BenchmarkCorpusFixture(
         QualityTaskFixture(
             task_id="hybrid_bootstrap",
             keyword="bootstrap",
-            query="Codex install files and bootstrap outputs",
+            query="managed host install files and bootstrap outputs",
             top_k=3,
             include_neighbors=1,
             expected_root="bootstrap_guide",

@@ -1043,12 +1043,12 @@ class CognitiveOSService:
             )
         if normalized_host_kind != "codex":
             notices.append(
-                "Automatic project installation is only implemented for codex. "
+                "Automatic project installation is only implemented for the managed host target. "
                 "Use the generated prompt and MCP config manually for this host kind."
             )
         elif not installed:
             notices.append(
-                "Codex auto-mount is not installed yet. Run bootstrap with "
+                "The managed host mount is not installed yet. Run bootstrap with "
                 "install=true to write AGENTS.md and .codex/config.toml."
             )
 
@@ -3049,7 +3049,7 @@ class CognitiveOSService:
                 "",
                 "Parameter recipes:",
                 (
-                    "- This Codex install intentionally mounts the reduced `codex-core` profile "
+                    "- This managed host install intentionally mounts the reduced `compact-core` profile "
                     "with `search`, `read`, `add`, `update`, `link`, and `dream`, while "
                     "still omitting `unlink` to reduce tool-schema and parameter errors."
                     if limited_codex_surface
@@ -3133,11 +3133,13 @@ class CognitiveOSService:
     def _host_mcp_profile(*, host_kind: str = "generic") -> str:
         normalized = host_kind.strip().lower().replace("-", "_")
         if normalized == "codex":
-            return "codex-core"
+            return "compact-core"
         return "host-core"
 
     def _host_memory_output_path(self, *, host_kind: str = "generic") -> Path:
         normalized = host_kind.strip().lower().replace("-", "_")
+        if normalized == "codex":
+            return Path.home() / ".codex" / "MEMORY.MD"
         if normalized != "generic":
             return self._project_root() / "MEMORY.MD"
         return self.settings.memory_output_path
