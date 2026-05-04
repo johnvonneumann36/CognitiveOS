@@ -79,10 +79,15 @@ jobs:
 
           if release_exists; then
             retry gh release upload "$TAG_NAME" dist/* --clobber
-            retry gh release edit "$TAG_NAME" --latest
+            retry gh release edit "$TAG_NAME" \
+              --draft=false \
+              --prerelease=false \
+              --latest
           else
             retry gh release create "$TAG_NAME" dist/* \
               --verify-tag \
               --generate-notes \
+              --draft=false \
+              --prerelease=false \
               --latest
           fi
