@@ -14,7 +14,6 @@ from cognitiveos.models import (
     NodeRecord,
 )
 
-
 class GraphGovernanceEngine:
     def __init__(
         self,
@@ -224,23 +223,17 @@ class GraphGovernanceEngine:
             for node in projected_nodes
             if node.durability == "durable" and metadata_profile_kind(node.metadata) == "system"
         ]
-        synthesized_nodes = [
+        compressed_nodes = [
             node
             for node in projected_nodes
-            if node.durability == "durable"
-            and node.node_type in {"super_node", "memory"}
+            if node.node_type == "super_node"
             and metadata_profile_kind(node.metadata) != "system"
-        ]
-        source_nodes = [
-            node
-            for node in projected_nodes
-            if node.node_type in {"source_document", "source_collection"}
-            and node.durability == "durable"
-        ]
+            and node.metadata.get("projection_status") != "superseded"
+        ][: self.settings.max_projected_super_nodes]
         lines = [
             "# CognitiveOS Memory",
             "",
-            "Generated from pinned memory and selected durable synthesized memory.",
+            "Generated from personal/profile memory and compressed dream super-nodes.",
             "",
         ]
         if not projected_nodes:
@@ -250,8 +243,7 @@ class GraphGovernanceEngine:
 
         self._append_memory_section(lines, "Pinned Memory", pinned_nodes)
         self._append_memory_section(lines, "Durable Profile Memory", durable_profile_nodes)
-        self._append_memory_section(lines, "Durable Synthesized Memory", synthesized_nodes)
-        self._append_memory_section(lines, "Durable Source Memory", source_nodes)
+        self._append_memory_section(lines, "Compressed Dream Memory", compressed_nodes)
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return output_path
 

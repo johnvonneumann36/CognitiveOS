@@ -26,9 +26,11 @@ from cognitiveos.exceptions import InvalidPayloadError
 from cognitiveos.extractors.defaults import DefaultContentExtractor
 from cognitiveos.graph_governance import GraphGovernanceEngine
 from cognitiveos.metadata_shapes import (
+    extract_node_entities,
     metadata_profile_kind,
     metadata_profile_section,
     metadata_source_ref,
+    normalize_entities,
 )
 from cognitiveos.models import (
     AddPayloadType,
@@ -121,6 +123,7 @@ class CognitiveOSService:
             build_document_profile=self._build_document_profile,
             embed_content=self._embed_content,
             find_similarity_conflicts=self._find_similarity_conflicts,
+            extract_entities=self._extract_entities,
             schedule_semantic_neighbor_refresh=self._schedule_semantic_neighbor_refresh,
         )
         self.dream_compiler = DreamCompiler(
@@ -393,14 +396,23 @@ class CognitiveOSService:
                 receipt.notices = self._maybe_handle_dream("add")
                 return receipt
 
+        description = self._summarize(content)
         node = NodeRecord(
             id=f"node_{uuid4().hex}",
             name=node_name,
-            description=self._summarize(content),
+            description=description,
             content=content,
             embedding=embedding,
             tags=merged_tags,
-            metadata=metadata,
+            metadata={
+                **metadata,
+                "entities": self._extract_entities(
+                    name=node_name,
+                    description=description,
+                    content=content,
+                    tags=merged_tags,
+                ),
+            },
             node_type=node_type,
             durability=self._resolve_node_durability(
                 durability=durability,
@@ -469,6 +481,12 @@ class CognitiveOSService:
                 tags=next_tags,
                 metadata={
                     **existing_node.metadata,
+                    "entities": self._extract_entities(
+                        name=existing_node.name,
+                        description=description,
+                        content=clean_content,
+                        tags=next_tags,
+                    ),
                     "source": {
                         **existing_node.metadata.get("source", {}),
                         **(
@@ -524,9 +542,25 @@ class CognitiveOSService:
                 durability=(
                     self._normalize_durability(durability) if durability is not None else None
                 ),
+                metadata={
+                    **existing_node.metadata,
+                    "entities": self._extract_entities(
+                        name=existing_node.name,
+                        description=description,
+                        content=clean_content,
+                        tags=next_tags,
+                    ),
+                },
                 actor=self.settings.default_actor,
             )
         else:
+            existing_metadata = dict(existing_node.metadata)
+            existing_metadata["entities"] = self._extract_entities(
+                name=existing_node.name,
+                description=description,
+                content=clean_content,
+                tags=next_tags,
+            )
             audit_log_id = self.repository.update_node(
                 node_id,
                 content=clean_content,
@@ -536,6 +570,7 @@ class CognitiveOSService:
                 durability=(
                     self._normalize_durability(durability) if durability is not None else None
                 ),
+                metadata=existing_metadata,
                 actor=self.settings.default_actor,
             )
         self._schedule_semantic_neighbor_refresh(node_id)
@@ -2042,6 +2077,59 @@ class CognitiveOSService:
             raise ValueError("Chat completion returned empty text.")
         return stripped
 
+    def _extract_entities(
+        self,
+        *,
+        name: str | None,
+        description: str,
+        content: str,
+        tags: list[str],
+    ) -> list[str]:
+        fallback = extract_node_entities(
+            name=name,
+            description=description,
+            content=content,
+            tags=tags,
+        )
+        system_prompt = (
+            "Extract stable boundary entities from one memory node. "
+            "Return strict JSON only: {\"entities\":[\"EntityName\"]}. "
+            "Prefer project, product, repository, organization, tool, platform, "
+            "service, library, dataset, or named system entities. Exclude generic "
+            "concepts such as memory, runtime, release, workflow, package, profile, "
+            "repository, test, API, node, source, and summary. Exclude incidental "
+            "mentions unless they are central to the node. Do not infer unsupported "
+            "entities. Return at most 6 entities."
+        )
+        compact_content = content.strip()
+        if len(compact_content) > 4000:
+            compact_content = compact_content[:4000].rstrip()
+        user_prompt = "\n".join(
+            [
+                f"Node name: {name or ''}",
+                f"Tags: {', '.join(tags)}",
+                f"Description: {description}",
+                "Content:",
+                compact_content,
+            ]
+        )
+        try:
+            completion = self._complete_chat(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            payload_text = completion.strip()
+            if payload_text.startswith("```"):
+                payload_text = payload_text.removeprefix("```json").removeprefix("```")
+                payload_text = payload_text.removesuffix("```").strip()
+            payload = json.loads(payload_text)
+            entities = payload.get("entities") if isinstance(payload, dict) else None
+            if isinstance(entities, list):
+                return normalize_entities(entities)[:6]
+        except (json.JSONDecodeError, NotImplementedError, RuntimeError, ValueError):
+            return fallback
+        return fallback
+
     def _build_document_profile_prompt(
         self,
         *,
@@ -2699,13 +2787,13 @@ class CognitiveOSService:
                 id="display_name",
                 prompt="How should the host address you?",
                 guidance="A preferred name or form of address for future sessions.",
-                example="Bruce",
+                example="Preferred name or handle",
             ),
             HostOnboardingQuestion(
                 id="role_team",
                 prompt="What is your role or team?",
                 guidance="Use the most durable title or team name, not a temporary assignment.",
-                example="Sr. Data Engineer, Data Solution China",
+                example="Software Engineer, Platform Team",
             ),
             HostOnboardingQuestion(
                 id="preferred_language",

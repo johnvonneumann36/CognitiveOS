@@ -1,11 +1,11 @@
 # CognitiveOS
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/johnvonneumann36/CognitiveOS/main/assets/logo.png" alt="CognitiveOS logo" width="220">
+  <img src="assets/logo.png" alt="CognitiveOS logo" width="220">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/johnvonneumann36/CognitiveOS/main/assets/banner.png" alt="CognitiveOS banner">
+  <img src="assets/banner.png" alt="CognitiveOS banner">
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/pypi/v/cognitiveos" alt="PyPI version">
   </a>
   <img src="https://img.shields.io/pypi/pyversions/cognitiveos" alt="Python versions">
-  <img src="https://img.shields.io/github/license/johnvonneumann36/CognitiveOS" alt="License">
+  <img src="https://img.shields.io/pypi/l/cognitiveos" alt="License">
 </p>
 
 <p align="center">
@@ -23,13 +23,13 @@
 <p align="center">
   <a href="https://pypi.org/project/cognitiveos/">PyPI</a>
   |
-  <a href="https://github.com/johnvonneumann36/CognitiveOS/releases">Releases</a>
+  <a href="https://pypi.org/project/cognitiveos/#history">Releases</a>
   |
-  <a href="https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs">Docs</a>
+  <a href="docs/">Docs</a>
 </p>
 
 > [!IMPORTANT]
-> `v0.1.3` is live on PyPI: `pip install cognitiveos`
+> `v0.1.4` is live on PyPI: `pip install cognitiveos`
 >
 > For compact host mounts, prefer `--profile compact-core`.
 > `compact-core` exposes `search`, `read`, `add`, `update`, `link`, and `dream`,
@@ -113,8 +113,8 @@ pip install -e ".[dev]"
 ### Public Entry Points
 
 - PyPI: `https://pypi.org/project/cognitiveos/`
-- Releases: `https://github.com/johnvonneumann36/CognitiveOS/releases`
-- Repository docs: `https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs`
+- Releases: `https://pypi.org/project/cognitiveos/#history`
+- Repository docs: `docs/`
 
 ## ✨ Design Goals
 
@@ -316,7 +316,9 @@ COGNITIVEOS_EMBEDDING_BASE_URL=http://localhost:11434/api
 COGNITIVEOS_CHAT_PROVIDER_TYPE=ollama
 COGNITIVEOS_CHAT_MODEL_NAME=gemma3
 COGNITIVEOS_CHAT_BASE_URL=http://localhost:11434/api
-COGNITIVEOS_SIMILARITY_THRESHOLD=0.92
+COGNITIVEOS_SIMILARITY_THRESHOLD=0.6
+COGNITIVEOS_ENTITYLESS_UNION_SIMILARITY_THRESHOLD=0.8
+COGNITIVEOS_MAX_PROJECTED_SUPER_NODES=5
 COGNITIVEOS_HYBRID_SEMANTIC_WEIGHT=0.65
 COGNITIVEOS_HYBRID_KEYWORD_WEIGHT=0.35
 ```
@@ -427,7 +429,7 @@ Submit first-start onboarding answers:
 
 ```bash
 cognitiveos submit-host-onboarding \
-  --answer display_name=Bruce \
+  --answer display_name=Alex \
   --answer role_team="Sr. Data Engineer" \
   --answer preferred_language=Chinese \
   --answer response_style="Concise, direct, pragmatic" \

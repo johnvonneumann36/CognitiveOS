@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognitiveos"
-version = "0.1.3"
+version = "0.1.4"
 description = "Local-first cognitive graph middleware with CLI, MCP, and Docker runtime targets."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [
-  { name = "johnvonneumann36" }
+  { name = "CognitiveOS Contributors" }
 ]
-urls = { Homepage = "https://github.com/johnvonneumann36/CognitiveOS", Documentation = "https://github.com/johnvonneumann36/CognitiveOS/tree/main/docs", Repository = "https://github.com/johnvonneumann36/CognitiveOS", Issues = "https://github.com/johnvonneumann36/CognitiveOS/issues", Releases = "https://github.com/johnvonneumann36/CognitiveOS/releases" }
+urls = { Homepage = "https://pypi.org/project/cognitiveos/", Documentation = "https://github.com/cognitiveos/CognitiveOS/tree/main/docs", Repository = "https://github.com/cognitiveos/CognitiveOS", Issues = "https://github.com/cognitiveos/CognitiveOS/issues", Releases = "https://pypi.org/project/cognitiveos/#history" }
 keywords = ["cognitive graph", "memory", "mcp", "cli", "sqlite"]
 classifiers = [
   "Development Status :: 3 - Alpha",

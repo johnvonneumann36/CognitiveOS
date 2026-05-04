@@ -70,7 +70,7 @@ class AppSettings:
     server_port: int = 8000
     server_path: str = "/mcp"
     server_profile: str = "host-core"
-    similarity_threshold: float = 0.92
+    similarity_threshold: float = 0.6
     hybrid_semantic_weight: float = 0.65
     hybrid_keyword_weight: float = 0.35
     search_candidate_cap: int = 20
@@ -80,6 +80,8 @@ class AppSettings:
     dream_event_threshold: int = 10
     dream_max_age_hours: int = 24
     dream_age_min_event_count: int = 5
+    entityless_union_similarity_threshold: float = 0.8
+    max_projected_super_nodes: int = 5
     long_document_token_threshold: int = 1200
     chunk_target_tokens: int = 900
     chunk_overlap_tokens: int = 120
@@ -181,7 +183,7 @@ class AppSettings:
             server_path=_env_value("COGNITIVEOS_SERVER_PATH", dotenv) or "/mcp",
             server_profile=_env_value("COGNITIVEOS_SERVER_PROFILE", dotenv) or "host-core",
             similarity_threshold=float(
-                _env_value("COGNITIVEOS_SIMILARITY_THRESHOLD", dotenv) or "0.92"
+                _env_value("COGNITIVEOS_SIMILARITY_THRESHOLD", dotenv) or "0.6"
             ),
             hybrid_semantic_weight=float(
                 _env_value("COGNITIVEOS_HYBRID_SEMANTIC_WEIGHT", dotenv) or "0.65"
@@ -212,6 +214,13 @@ class AppSettings:
             ),
             dream_age_min_event_count=int(
                 _env_value("COGNITIVEOS_DREAM_AGE_MIN_EVENT_COUNT", dotenv) or "5"
+            ),
+            entityless_union_similarity_threshold=float(
+                _env_value("COGNITIVEOS_ENTITYLESS_UNION_SIMILARITY_THRESHOLD", dotenv)
+                or "0.8"
+            ),
+            max_projected_super_nodes=int(
+                _env_value("COGNITIVEOS_MAX_PROJECTED_SUPER_NODES", dotenv) or "5"
             ),
             long_document_token_threshold=int(
                 _env_value("COGNITIVEOS_LONG_DOCUMENT_TOKEN_THRESHOLD", dotenv) or "1200"

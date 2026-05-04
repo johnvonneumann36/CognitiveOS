@@ -32,6 +32,8 @@ class FakeChatProvider:
         return "synthetic summary"
 
     def complete(self, *, system_prompt: str, user_prompt: str) -> str:
+        if '"entities"' in system_prompt:
+            return '{"entities":[]}'
         if '"tags"' in system_prompt:
             return '{"tags":["graph","memory","runtime"]}'
         return "synthetic document description"
@@ -263,6 +265,24 @@ def test_search_neighbor_expansion_is_cycle_safe_and_batched(tmp_path: Path) -> 
     }
     assert service.last_runtime_metrics["operation"] == "search"
     assert service.last_runtime_metrics["timings_ms"]["build_results"] >= 0
+
+
+def test_keyword_search_handles_punctuation_without_fts_errors(tmp_path: Path) -> None:
+    service, _settings = build_service(tmp_path)
+
+    receipt = service.add_node(
+        payload_type=AddPayloadType.CONTENT,
+        payload="CognitiveOS v0.1.3 uses the compact-core profile for compact host mounts.",
+        tags=["release", "profile"],
+        force=True,
+        name="Release Notes",
+    )
+
+    version_results = service.search(keyword="v0.1.3", top_k=5, include_neighbors=0)
+    profile_results = service.search(keyword="compact-core", top_k=5, include_neighbors=0)
+
+    assert any(result.id == receipt.node_id for result in version_results)
+    assert any(result.id == receipt.node_id for result in profile_results)
 
 
 def test_add_node_async_refreshes_semantic_neighbor_cache(tmp_path: Path) -> None:
@@ -949,8 +969,8 @@ def test_folder_search_read_and_update_keep_collection_root_semantics(tmp_path: 
     assert updated.embedding is not None
 
     memory_text = service.compile_memory_snapshot().read_text(encoding="utf-8")
-    assert "## Durable Source Memory" in memory_text
-    assert "CognitiveOS Repository" in memory_text
+    assert "## Durable Source Memory" not in memory_text
+    assert "CognitiveOS Repository" not in memory_text
 
 
 def test_update_node_delete_tag_removes_node_edges_and_vector(tmp_path: Path) -> None:
@@ -1166,6 +1186,9 @@ def test_dream_creates_super_node_and_redirects_edges(tmp_path: Path) -> None:
 
     memory_text = settings.memory_output_path.read_text(encoding="utf-8")
     assert "Profile" in memory_text
+    assert "## Compressed Dream Memory" in memory_text
+    assert "synthetic summary" in memory_text
+    assert "Node B: Graph memory runtime" not in memory_text
 
 
 def test_dream_without_chat_returns_pending_host_compaction(tmp_path: Path) -> None:
@@ -1639,7 +1662,7 @@ def test_codex_bootstrap_install_and_onboarding_close_the_loop(tmp_path: Path) -
         host_kind="codex",
         output_dir=bootstrap_dir,
         answers={
-            "display_name": "Bruce",
+            "display_name": "Alex",
             "role_team": "Sr. Data Engineer",
             "preferred_language": "Chinese",
             "response_style": "Concise, direct, pragmatic",

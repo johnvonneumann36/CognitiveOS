@@ -37,7 +37,7 @@ def _parse_key_value_pairs(pairs: list[str] | None) -> dict[str, str]:
     for item in pairs or []:
         if "=" not in item:
             raise typer.BadParameter(
-                f"Invalid answer '{item}'. Use KEY=VALUE form, for example display_name=Bruce."
+                f"Invalid answer '{item}'. Use KEY=VALUE form, for example display_name=Alex."
             )
         key, value = item.split("=", 1)
         key = key.strip()

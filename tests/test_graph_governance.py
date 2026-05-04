@@ -6,7 +6,7 @@ from cognitiveos.db.repository import SQLiteRepository
 from cognitiveos.metadata_shapes import (
     metadata_source_ref,
 )
-from cognitiveos.models import AddPayloadType
+from cognitiveos.models import AddPayloadType, NodeRecord
 from cognitiveos.service import CognitiveOSService
 
 
@@ -31,6 +31,8 @@ class FakeChatProvider:
         return "synthetic summary"
 
     def complete(self, *, system_prompt: str, user_prompt: str) -> str:
+        if '"entities"' in system_prompt:
+            return '{"entities":[]}'
         if '"tags"' in system_prompt:
             return '{"tags":["graph governance","memory runtime","evidence flow"]}'
         return (
@@ -46,6 +48,7 @@ def build_service(
     chat_provider: FakeChatProvider | None = None,
     relationship_weak_after_hours: int = 72,
     relationship_stale_after_hours: int = 168,
+    max_projected_super_nodes: int = 5,
 ) -> CognitiveOSService:
     settings = AppSettings.from_env(
         db_path=tmp_path / "cognitiveos.db",
@@ -53,6 +56,7 @@ def build_service(
     )
     settings.relationship_weak_after_hours = relationship_weak_after_hours
     settings.relationship_stale_after_hours = relationship_stale_after_hours
+    settings.max_projected_super_nodes = max_projected_super_nodes
     service = CognitiveOSService(
         settings=settings,
         repository=SQLiteRepository(settings.db_path),
@@ -245,7 +249,7 @@ def test_relationship_governance_and_memory_projection(tmp_path: Path) -> None:
     service.pin_memory(node_id=beta.node_id)
     memory_path = service.compile_memory_snapshot()
     memory_text = memory_path.read_text(encoding="utf-8")
-    assert "Alpha" in memory_text
+    assert "Alpha" not in memory_text
     assert "Beta" in memory_text
     assert "Working Node" not in memory_text
 
@@ -312,6 +316,31 @@ def test_refresh_source_document_reextracts_source_document(tmp_path: Path) -> N
     assert refreshed.content == document_path.read_text(encoding="utf-8").strip()
 
 
+def test_memory_snapshot_uses_configured_super_node_limit(tmp_path: Path) -> None:
+    service = build_service(tmp_path, max_projected_super_nodes=3)
+    for index in range(6):
+        service.repository.create_node(
+            NodeRecord(
+                id=f"node_super_{index}",
+                name=f"Compressed {index}",
+                description=f"compressed summary {index}",
+                content=f"compressed content {index}",
+                node_type="super_node",
+                durability="working",
+                metadata={
+                    "compression_policy_version": "entity-assisted-v1",
+                    "entities": ["CognitiveOS"],
+                },
+            ),
+            actor="test",
+            action_type="create",
+        )
+
+    memory_text = service.compile_memory_snapshot().read_text(encoding="utf-8")
+
+    assert memory_text.count("compressed summary") == 3
+
+
 def test_memory_projection_includes_long_source_document_without_summary_node(
     tmp_path: Path,
 ) -> None:
@@ -326,8 +355,8 @@ def test_memory_projection_includes_long_source_document_without_summary_node(
 
     memory_path = service.compile_memory_snapshot()
     memory_text = memory_path.read_text(encoding="utf-8")
-    assert "## Durable Source Memory" in memory_text
-    assert f"- {source_node.name}:" in memory_text
+    assert "## Durable Source Memory" not in memory_text
+    assert f"- {source_node.name}:" not in memory_text
 
 
 def test_document_embedding_uses_description_and_generated_tags(tmp_path: Path) -> None:

@@ -7,7 +7,11 @@ from uuid import uuid4
 
 from cognitiveos.db.repository import SQLiteRepository
 from cognitiveos.graph_governance import GraphGovernanceEngine
-from cognitiveos.metadata_shapes import metadata_profile_kind
+from cognitiveos.metadata_shapes import (
+    metadata_entities,
+    metadata_profile_kind,
+    normalize_entities,
+)
 from cognitiveos.models import (
     DreamCompactionTask,
     DreamResult,
@@ -201,12 +205,16 @@ class DreamCompiler:
         run_id: str,
         task_id: str | None = None,
     ) -> NodeRecord:
+        cluster_entities = self._cluster_entities(cluster)
         metadata = {
             "dream_source_node_ids": [node.id for node in cluster],
             "dream_cluster_size": len(cluster),
             "dream_run_id": run_id,
             "dream_compaction_backend": backend,
+            "compression_policy_version": "entity-assisted-v1",
         }
+        if cluster_entities:
+            metadata["entities"] = cluster_entities
         if task_id is not None:
             metadata["dream_task_id"] = task_id
 
@@ -292,6 +300,15 @@ class DreamCompiler:
 
         for node_id, neighbor_id, similarity in cached_neighbor_rows:
             if similarity < similarity_threshold or neighbor_id not in candidate_ids:
+                continue
+            if not self._can_union_semantic_neighbors(
+                rows_by_id[node_id],
+                rows_by_id[neighbor_id],
+                similarity=similarity,
+                entityless_similarity_threshold=(
+                    self.governance.settings.entityless_union_similarity_threshold
+                ),
+            ):
                 continue
             union(node_id, neighbor_id)
 
@@ -431,18 +448,26 @@ class DreamCompiler:
         summary = self.chat_provider.summarize(content).strip()
         if not summary:
             raise ValueError("Chat provider returned an empty dream summary.")
+        entities = self._cluster_entities(cluster)
+        if entities and not self._summary_mentions_entity(summary, entities):
+            summary = f"{', '.join(entities)}: {summary}"
         return summary[:500]
 
-    @staticmethod
-    def _make_heuristic_super_node_description(cluster: list[NodeRecord]) -> str:
+    def _make_heuristic_super_node_description(self, cluster: list[NodeRecord]) -> str:
         joined = "; ".join(node.description for node in cluster if node.description)
+        entities = self._cluster_entities(cluster)
+        if entities and not self._summary_mentions_entity(joined, entities):
+            joined = f"{', '.join(entities)}: {joined}"
         if len(joined) <= 500:
             return joined
         return joined[:497].rstrip() + "..."
 
     def _make_super_node_content(self, cluster: list[NodeRecord]) -> str:
+        entities = self._cluster_entities(cluster)
         lines = [
             "Dream consolidation result.",
+            "",
+            f"Cluster entities: {', '.join(entities) if entities else 'none'}",
             "",
             "Source nodes:",
         ]
@@ -454,13 +479,49 @@ class DreamCompiler:
         return "\n".join(lines)[: self.max_node_content_chars]
 
     @staticmethod
+    def _node_entities(node: NodeRecord) -> list[str]:
+        return metadata_entities(node.metadata)
+
+    @classmethod
+    def _cluster_entities(cls, cluster: list[NodeRecord]) -> list[str]:
+        entities: list[str] = []
+        for node in cluster:
+            entities.extend(cls._node_entities(node))
+        return normalize_entities(entities)
+
+    @classmethod
+    def _can_union_semantic_neighbors(
+        cls,
+        left: NodeRecord,
+        right: NodeRecord,
+        *,
+        similarity: float,
+        entityless_similarity_threshold: float,
+    ) -> bool:
+        left_entities = cls._node_gate_entities(left)
+        right_entities = cls._node_gate_entities(right)
+        if left_entities or right_entities:
+            return bool(left_entities & right_entities)
+        return similarity >= entityless_similarity_threshold
+
+    @staticmethod
+    def _summary_mentions_entity(summary: str, entities: list[str]) -> bool:
+        lowered = summary.lower()
+        return any(entity.lower() in lowered for entity in entities)
+
+    @classmethod
+    def _node_gate_entities(cls, node: NodeRecord) -> set[str]:
+        return {entity.lower() for entity in cls._node_entities(node)}
+
     def _make_host_compaction_prompt(
+        self,
         *,
         cluster: list[NodeRecord],
         suggested_title: str,
         prepared_content: str,
     ) -> str:
         source_ids = ", ".join(node.id for node in cluster)
+        entities = self._cluster_entities(cluster)
         return "\n".join(
             [
                 "# Dream Compaction Task",
@@ -483,6 +544,10 @@ class DreamCompiler:
                 "- Keep durable facts and reusable operating knowledge.",
                 "- Remove repetition, filler, and low-value detail.",
                 "- Preserve contradictions, constraints, and important links.",
+                (
+                    "- Mention every cluster entity in the description: "
+                    f"{', '.join(entities) if entities else 'none'}."
+                ),
                 "- Do not invent facts that are not supported by the source nodes.",
                 "- Do not include markdown fences or explanation outside the JSON object.",
                 "",

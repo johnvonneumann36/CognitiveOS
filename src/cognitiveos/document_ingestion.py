@@ -13,9 +13,14 @@ from cognitiveos.config import AppSettings
 from cognitiveos.db.repository import SQLiteRepository
 from cognitiveos.exceptions import InvalidPayloadError
 from cognitiveos.extractors.defaults import DefaultContentExtractor
-from cognitiveos.models import ConflictNode
 from cognitiveos.metadata_shapes import metadata_source_ref
-from cognitiveos.models import PHYSICAL_MAX_NODE_CONTENT_CHARS, NodeRecord, Receipt, SearchResult
+from cognitiveos.models import (
+    PHYSICAL_MAX_NODE_CONTENT_CHARS,
+    ConflictNode,
+    NodeRecord,
+    Receipt,
+    SearchResult,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +38,7 @@ class DocumentIngestionPipeline:
         build_document_profile: Callable[..., dict[str, Any]],
         embed_content: Callable[[str], list[float] | None],
         find_similarity_conflicts: Callable[[list[float]], list[dict[str, Any]]],
+        extract_entities: Callable[..., list[str]],
         schedule_semantic_neighbor_refresh: Callable[[str], None] | None = None,
     ) -> None:
         self.settings = settings
@@ -43,6 +49,7 @@ class DocumentIngestionPipeline:
         self.build_document_profile = build_document_profile
         self.embed_content = embed_content
         self.find_similarity_conflicts = find_similarity_conflicts
+        self.extract_entities = extract_entities
         self.schedule_semantic_neighbor_refresh = schedule_semantic_neighbor_refresh
         self._last_source_conflicts: list[NodeRecord] = []
 
@@ -216,6 +223,12 @@ class DocumentIngestionPipeline:
             tags=effective_tags,
             metadata={
                 **source_metadata,
+                "entities": self.extract_entities(
+                    name=node_name,
+                    description=description,
+                    content=stored_content,
+                    tags=effective_tags,
+                ),
                 "document_profile": self._build_document_profile_metadata(
                     generated_tags=generated_tags,
                     prior_node=prior_node,

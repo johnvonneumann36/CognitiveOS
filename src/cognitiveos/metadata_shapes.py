@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 LEGACY_NODE_FIELDS = {
@@ -175,3 +176,122 @@ def metadata_profile_section(metadata: dict[str, Any]) -> str | None:
     if bootstrap_section:
         return str(bootstrap_section)
     return None
+
+
+_ENTITY_CANDIDATE_PATTERN = re.compile(
+    r"\b(?:"
+    r"(?:[A-Z][a-z0-9]+|[A-Z]{2,})"
+    r"(?:\s+(?:[A-Z][a-z0-9]+|[A-Z]{2,})){1,3}"
+    r"|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*"
+    r"|[A-Z]{4,}(?:[._-][A-Z0-9]+)*"
+    r"|[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)+"
+    r")\b"
+)
+
+
+def _has_entity_shape(value: str) -> bool:
+    if re.fullmatch(r"[a-z]+(?:\s+[a-z]+)*", value):
+        return False
+    if re.search(r"[a-z][A-Z]", value):
+        return True
+    if re.search(r"[A-Z]{2,}[a-z]", value):
+        return True
+    if re.fullmatch(r"[A-Z0-9][A-Z0-9._-]{3,}", value):
+        return True
+    if re.fullmatch(
+        r"(?:[A-Z][a-z0-9]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z0-9]+|[A-Z]{2,})){1,3}",
+        value,
+    ):
+        return True
+    return bool(
+        re.search(r"[._-]", value)
+        and re.search(r"[A-Za-z]", value)
+        and re.search(r"[0-9A-Z]", value)
+    )
+
+
+def normalize_entity(value: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", value.strip().strip(".,:;()[]{}<>`'\""))
+    if not cleaned:
+        return None
+    if len(cleaned) < 3:
+        return None
+    if len(cleaned.split()) > 4:
+        return None
+    if not _has_entity_shape(cleaned):
+        return None
+    return cleaned
+
+
+def normalize_entities(values: list[Any] | tuple[Any, ...] | set[Any] | None) -> list[str]:
+    entities: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        if not isinstance(value, str):
+            continue
+        entity = normalize_entity(value)
+        if entity is None:
+            continue
+        key = entity.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        entities.append(entity)
+    return entities
+
+
+def extract_node_entities(
+    *,
+    name: str | None,
+    description: str,
+    content: str,
+    tags: list[str],
+) -> list[str]:
+    haystacks = [name or "", description, content, *tags]
+    entities: list[str] = []
+    seen: set[str] = set()
+    candidates: list[str] = []
+    candidates.extend(tags)
+    candidates.extend(
+        match.group(0)
+        for text in haystacks
+        for match in _ENTITY_CANDIDATE_PATTERN.finditer(text or "")
+    )
+    for candidate in candidates:
+        entity = normalize_entity(candidate)
+        if entity is None:
+            continue
+        key = entity.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        entities.append(entity)
+        if len(entities) >= 6:
+            break
+    return entities
+
+
+def metadata_entities(metadata: dict[str, Any]) -> list[str]:
+    normalized = normalize_node_metadata(metadata)
+    return normalize_entities(normalized.get("entities"))
+
+
+def metadata_with_normalized_entities(metadata: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_node_metadata(metadata)
+    existing = metadata_entities(normalized)
+    if existing:
+        normalized["entities"] = existing
+    else:
+        normalized.pop("entities", None)
+    return normalized
+
+
+def metadata_with_extracted_entities(
+    metadata: dict[str, Any],
+    *,
+    name: str | None,
+    description: str,
+    content: str,
+    tags: list[str],
+) -> dict[str, Any]:
+    return metadata_with_normalized_entities(metadata)

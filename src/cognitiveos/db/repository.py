@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,7 @@ from cognitiveos.db.connection import open_connection
 from cognitiveos.db.schema import SCHEMA_SQL
 from cognitiveos.exceptions import NodeNotFoundError
 from cognitiveos.metadata_shapes import (
+    metadata_with_normalized_entities,
     normalize_edge_metadata,
     normalize_node_metadata,
 )
@@ -490,7 +492,7 @@ class SQLiteRepository:
 
     def create_node(self, node: NodeRecord, *, actor: str, action_type: str) -> str:
         audit_log_id = _new_id("log")
-        normalized_metadata = normalize_node_metadata(node.metadata)
+        normalized_metadata = metadata_with_normalized_entities(node.metadata)
         with open_connection(self.db_path) as connection:
             cursor = connection.execute(
                 """
@@ -558,12 +560,16 @@ class SQLiteRepository:
         embedding: list[float] | None,
         tags: list[str] | None,
         durability: str | None,
+        metadata: dict[str, Any] | None = None,
         actor: str,
     ) -> str:
         existing = self.get_node_record(node_id)
         audit_log_id = _new_id("log")
         next_tags = tags if tags is not None else _json_loads(existing["tags_json"], [])
         next_durability = durability or existing["durability"]
+        next_metadata = metadata_with_normalized_entities(
+            metadata if metadata is not None else _json_loads(existing["metadata_json"], {})
+        )
         with open_connection(self.db_path) as connection:
             connection.execute(
                 """
@@ -579,6 +585,7 @@ class SQLiteRepository:
                     description = ?,
                     embedding = ?,
                     tags_json = ?,
+                    metadata_json = ?,
                     durability = ?,
                     last_reinforced_at = COALESCE(last_reinforced_at, CURRENT_TIMESTAMP),
                     updated_at = CURRENT_TIMESTAMP
@@ -589,6 +596,7 @@ class SQLiteRepository:
                     description,
                     _serialize_embedding(embedding),
                     _json_dumps(next_tags),
+                    _json_dumps(next_metadata),
                     next_durability,
                     node_id,
                 ),
@@ -603,7 +611,7 @@ class SQLiteRepository:
                 content=content,
                 node_type=existing["node_type"],
                 tags=next_tags,
-                metadata=_json_loads(existing["metadata_json"], {}),
+                metadata=next_metadata,
             )
             self._record_memory_event(
                 connection,
@@ -616,7 +624,7 @@ class SQLiteRepository:
     def overwrite_node(self, node: NodeRecord, *, actor: str, action_type: str = "update") -> str:
         existing = self.get_node_record(node.id)
         audit_log_id = _new_id("log")
-        normalized_metadata = normalize_node_metadata(node.metadata)
+        normalized_metadata = metadata_with_normalized_entities(node.metadata)
         with open_connection(self.db_path) as connection:
             connection.execute(
                 """
@@ -1981,6 +1989,7 @@ class SQLiteRepository:
                 SELECT rowid, *
                 FROM nodes
                 WHERE durability IN ('durable', 'pinned')
+                   OR node_type = 'super_node'
                 ORDER BY
                     CASE durability WHEN 'pinned' THEN 0 ELSE 1 END,
                     CASE
@@ -2119,11 +2128,12 @@ class SQLiteRepository:
         stripped = keyword.strip()
         if not stripped:
             return ""
-        if any(token in stripped for token in ('"', "AND", "OR", "NOT", "*", "NEAR")):
+        if re.search(r'["*()]|\b(?:AND|OR|NOT|NEAR)\b', stripped):
             return stripped
-        if " " in stripped:
-            return f'"{stripped}"'
-        return stripped
+        tokens = re.findall(r"\w+", stripped, flags=re.UNICODE)
+        if not tokens:
+            return ""
+        return " ".join(f'"{token}"' for token in tokens)
 
     def _ensure_vector_table(self, connection: sqlite3.Connection, dimension: int) -> None:
         connection.execute(
