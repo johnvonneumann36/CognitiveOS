@@ -18,12 +18,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -44,11 +44,44 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ steps.meta.outputs.tag }}
         run: |
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/* --clobber
-            gh release edit "$TAG_NAME" --latest
+          retry() {
+            local attempt=1
+            local max_attempts=5
+            until "$@"; do
+              local status=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                return "$status"
+              fi
+              sleep "$((attempt * 10))"
+              attempt="$((attempt + 1))"
+            done
+          }
+
+          release_exists() {
+            local attempt=1
+            local max_attempts=5
+            local output
+            while true; do
+              if output="$(gh release view "$TAG_NAME" 2>&1)"; then
+                return 0
+              fi
+              if grep -q "release not found" <<<"$output"; then
+                return 1
+              fi
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "$output" >&2
+                return 2
+              fi
+              sleep "$((attempt * 10))"
+              attempt="$((attempt + 1))"
+            done
+          }
+
+          if release_exists; then
+            retry gh release upload "$TAG_NAME" dist/* --clobber
+            retry gh release edit "$TAG_NAME" --latest
           else
-            gh release create "$TAG_NAME" dist/* \
+            retry gh release create "$TAG_NAME" dist/* \
               --verify-tag \
               --generate-notes \
               --latest
