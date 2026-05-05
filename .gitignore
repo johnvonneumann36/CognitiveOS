@@ -26,3 +26,4 @@ benchmark/results/*
 docs/*
 !docs/.gitkeep
 MEMORY.MD
+AGENTS.md
