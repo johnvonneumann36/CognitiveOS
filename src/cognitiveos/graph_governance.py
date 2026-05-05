@@ -14,7 +14,10 @@ from cognitiveos.models import (
     NodeRecord,
 )
 
+
 class GraphGovernanceEngine:
+    projection_policy_version = "memory-projection-v1"
+
     def __init__(
         self,
         *,
@@ -144,8 +147,7 @@ class GraphGovernanceEngine:
                 "Weak relationship inside dream candidate scope should be reviewed "
                 "before future consolidation."
                 if edge.status == "weak"
-                else "Stale relationship inside dream candidate scope is eligible "
-                "for pruning."
+                else "Stale relationship inside dream candidate scope is eligible for pruning."
             )
             if touches_cluster:
                 if edge.src_id in clustered_ids and edge.dst_id in clustered_ids:
@@ -216,20 +218,11 @@ class GraphGovernanceEngine:
         return suggestions
 
     def compile_memory_snapshot(self, output_path: Path) -> Path:
-        projected_nodes = self.repository.list_nodes_for_memory_projection()
-        pinned_nodes = [node for node in projected_nodes if node.durability == "pinned"]
-        durable_profile_nodes = [
-            node
-            for node in projected_nodes
-            if node.durability == "durable" and metadata_profile_kind(node.metadata) == "system"
-        ]
-        compressed_nodes = [
-            node
-            for node in projected_nodes
-            if node.node_type == "super_node"
-            and metadata_profile_kind(node.metadata) != "system"
-            and node.metadata.get("projection_status") != "superseded"
-        ][: self.settings.max_projected_super_nodes]
+        projection = self._build_memory_projection()
+        projected_nodes = projection["all_nodes"]
+        pinned_nodes = projection["pinned_nodes"]
+        durable_profile_nodes = projection["durable_profile_nodes"]
+        compressed_nodes = projection["compressed_nodes"]
         lines = [
             "# CognitiveOS Memory",
             "",
@@ -247,6 +240,47 @@ class GraphGovernanceEngine:
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return output_path
 
+    def describe_memory_projection(self) -> dict[str, Any]:
+        projection = self._build_memory_projection()
+        return {
+            "projection_policy_version": self.projection_policy_version,
+            "max_projected_super_nodes": self.settings.max_projected_super_nodes,
+            "pinned_node_ids": [node.id for node in projection["pinned_nodes"]],
+            "durable_profile_node_ids": [node.id for node in projection["durable_profile_nodes"]],
+            "compressed_node_ids": [node.id for node in projection["compressed_nodes"]],
+        }
+
+    def _build_memory_projection(self) -> dict[str, list[NodeRecord]]:
+        projected_nodes = self.repository.list_nodes_for_memory_projection()
+        pinned_nodes = sorted(
+            [node for node in projected_nodes if node.durability == "pinned"],
+            key=self._profile_projection_sort_key,
+        )
+        durable_profile_nodes = sorted(
+            [
+                node
+                for node in projected_nodes
+                if node.durability == "durable" and metadata_profile_kind(node.metadata) == "system"
+            ],
+            key=self._profile_projection_sort_key,
+        )
+        compressed_nodes = sorted(
+            [
+                node
+                for node in projected_nodes
+                if node.node_type == "super_node"
+                and metadata_profile_kind(node.metadata) != "system"
+                and node.metadata.get("projection_status") != "superseded"
+            ],
+            key=self._compressed_projection_sort_key,
+        )[: self.settings.max_projected_super_nodes]
+        return {
+            "all_nodes": projected_nodes,
+            "pinned_nodes": pinned_nodes,
+            "durable_profile_nodes": durable_profile_nodes,
+            "compressed_nodes": compressed_nodes,
+        }
+
     @staticmethod
     def _append_memory_section(lines: list[str], title: str, nodes: list[NodeRecord]) -> None:
         if not nodes:
@@ -257,3 +291,43 @@ class GraphGovernanceEngine:
             node_title = node.name or node.id
             lines.append(f"- {node_title}: {node.description}")
         lines.append("")
+
+    @staticmethod
+    def _profile_projection_sort_key(node: NodeRecord) -> tuple[str, str]:
+        return (node.name or "", node.id)
+
+    @classmethod
+    def _compressed_projection_sort_key(
+        cls,
+        node: NodeRecord,
+    ) -> tuple[float, float, str]:
+        return (
+            -cls._projection_score(node.metadata),
+            -cls._timestamp_score(node.last_reinforced_at or node.updated_at or node.created_at),
+            node.id,
+        )
+
+    @staticmethod
+    def _projection_score(metadata: dict[str, Any]) -> float:
+        for key in ("future_score", "importance_score", "score"):
+            raw = metadata.get(key)
+            if raw is None:
+                continue
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    @staticmethod
+    def _timestamp_score(value: str | None) -> float:
+        if not value:
+            return 0.0
+        normalized = value.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return 0.0
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.timestamp()

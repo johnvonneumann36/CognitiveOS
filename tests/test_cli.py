@@ -50,6 +50,23 @@ def test_cli_init_add_search(tmp_path: Path) -> None:
     doctor_payload = json.loads(doctor_result.stdout)
     assert doctor_payload["sqlite_vec_version"]
 
+    config_result = runner.invoke(
+        app,
+        [
+            "config",
+            "show",
+            "--db-path",
+            str(db_path),
+            "--project-root",
+            str(tmp_path),
+        ],
+    )
+    assert config_result.exit_code == 0
+    config_payload = json.loads(config_result.stdout)
+    assert config_payload["status"] == "success"
+    assert config_payload["config"]["db_path"] == str(db_path)
+    assert config_payload["config"]["max_projected_super_nodes"] == 5
+
     bootstrap_result = runner.invoke(
         app,
         [

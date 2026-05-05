@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 PHYSICAL_MAX_NODE_CONTENT_CHARS = 65535
 
 
@@ -188,6 +187,12 @@ class DreamResult(BaseModel):
     run_id: str | None = None
     trigger_reason: str | None = None
     auto_triggered: bool = False
+    effective_config: dict[str, Any] = Field(default_factory=dict)
+    candidate_explanations: list[dict[str, Any]] = Field(default_factory=list)
+    cluster_explanations: list[dict[str, Any]] = Field(default_factory=list)
+    skipped_unions: list[dict[str, Any]] = Field(default_factory=list)
+    entity_gate_decisions: list[dict[str, Any]] = Field(default_factory=list)
+    projected_memory: dict[str, Any] = Field(default_factory=dict)
     notices: list[str] = Field(default_factory=list)
 
 

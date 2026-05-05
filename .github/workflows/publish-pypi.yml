@@ -68,14 +68,37 @@ jobs:
 
       - name: Check whether version already exists on PyPI
         id: pypi_check
-        shell: bash
         run: |
-          STATUS_CODE="$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/cognitiveos/${{ needs.build.outputs.version }}/json")"
-          if [ "$STATUS_CODE" = "200" ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          python - <<'PY'
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
+          version = "${{ needs.build.outputs.version }}"
+          url = f"https://pypi.org/pypi/cognitiveos/{version}/json"
+          exists = "false"
+          for attempt in range(1, 6):
+              try:
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      exists = "true" if response.status == 200 else "false"
+                      break
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      exists = "false"
+                      break
+                  if 500 <= exc.code < 600 and attempt < 5:
+                      time.sleep(attempt * 10)
+                      continue
+                  raise
+              except urllib.error.URLError:
+                  if attempt >= 5:
+                      raise
+                  time.sleep(attempt * 10)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"exists={exists}\n")
+          PY
 
       - name: Skip publish because version already exists
         if: steps.pypi_check.outputs.exists == 'true'

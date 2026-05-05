@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from cognitiveos.db.repository import SQLiteRepository
@@ -62,11 +63,42 @@ class DreamCompiler:
             and node.node_type != "super_node"
             and node.durability != "pinned"
         ]
-        clusters = self._build_clusters(
+        effective_config = {
+            "semantic_threshold": similarity_threshold,
+            "entityless_threshold": (
+                self.governance.settings.entityless_union_similarity_threshold
+            ),
+            "max_candidates": max_candidates,
+            "min_cluster_size": min_cluster_size,
+            "entity_extraction_backend": "metadata_entities",
+        }
+        candidate_explanations = [
+            {
+                "node_id": node.id,
+                "decision": "included",
+                "reason": "recent_or_frequent_non_system_non_pinned_memory",
+                "node_type": node.node_type,
+                "durability": node.durability,
+                "entities": metadata_entities(node.metadata),
+            }
+            for node in candidates
+        ]
+        clusters, skipped_unions, entity_gate_decisions = self._build_clusters(
             candidates,
             min_cluster_size=min_cluster_size,
             similarity_threshold=similarity_threshold,
         )
+        cluster_explanations = [
+            {
+                "cluster_index": index,
+                "node_ids": [node.id for node in cluster],
+                "size": len(cluster),
+                "entities": self._cluster_entities(cluster),
+                "decision": "eligible_for_compaction",
+                "reason": f"cluster_size >= {min_cluster_size}",
+            }
+            for index, cluster in enumerate(clusters)
+        ]
         relationship_cleanup_plans = self.governance.build_relationship_cleanup_plans(
             candidates,
             clusters,
@@ -127,6 +159,7 @@ class DreamCompiler:
             )
 
         rendered_path = self.governance.compile_memory_snapshot(output_path)
+        projected_memory = self.governance.describe_memory_projection()
         status = "awaiting_host_compaction" if pending_compactions else "success"
         if pending_compactions:
             notices.append(
@@ -138,9 +171,7 @@ class DreamCompiler:
                 f"Dream identified {len(relationship_cleanup_plans)} relationship cleanup plans."
             )
         if durability_suggestions:
-            notices.append(
-                f"Dream produced {len(durability_suggestions)} durability suggestions."
-            )
+            notices.append(f"Dream produced {len(durability_suggestions)} durability suggestions.")
         return DreamResult(
             status=status,
             candidate_node_ids=[node.id for node in candidates],
@@ -150,6 +181,12 @@ class DreamCompiler:
             durability_suggestions=durability_suggestions,
             pending_compactions=pending_compactions,
             memory_path=str(rendered_path),
+            effective_config=effective_config,
+            candidate_explanations=candidate_explanations,
+            cluster_explanations=cluster_explanations,
+            skipped_unions=skipped_unions,
+            entity_gate_decisions=entity_gate_decisions,
+            projected_memory=projected_memory,
             notices=notices,
         )
 
@@ -212,6 +249,7 @@ class DreamCompiler:
             "dream_run_id": run_id,
             "dream_compaction_backend": backend,
             "compression_policy_version": "entity-assisted-v1",
+            "projection_policy_version": self.governance.projection_policy_version,
         }
         if cluster_entities:
             metadata["entities"] = cluster_entities
@@ -242,14 +280,16 @@ class DreamCompiler:
         *,
         min_cluster_size: int,
         similarity_threshold: float,
-    ) -> list[list[NodeRecord]]:
+    ) -> tuple[list[list[NodeRecord]], list[dict[str, Any]], list[dict[str, Any]]]:
         if not candidates:
-            return []
+            return [], [], []
 
         candidate_ids = {node.id for node in candidates}
         rows_by_id = {node.id: node for node in candidates}
         parent = {node.id: node.id for node in candidates}
         rank = {node.id: 0 for node in candidates}
+        skipped_unions: list[dict[str, Any]] = []
+        entity_gate_decisions: list[dict[str, Any]] = []
 
         def find(node_id: str) -> str:
             root = node_id
@@ -282,11 +322,7 @@ class DreamCompiler:
             min_similarity=similarity_threshold,
         )
         cached_node_ids = {node_id for node_id, _neighbor_id, _similarity in cached_neighbor_rows}
-        missing_cache_ids = [
-            node_id
-            for node_id in available_ids
-            if node_id not in cached_node_ids
-        ]
+        missing_cache_ids = [node_id for node_id in available_ids if node_id not in cached_node_ids]
         for node_id in missing_cache_ids:
             self.repository.refresh_semantic_neighbors_for_node(
                 node_id,
@@ -299,7 +335,25 @@ class DreamCompiler:
             )
 
         for node_id, neighbor_id, similarity in cached_neighbor_rows:
-            if similarity < similarity_threshold or neighbor_id not in candidate_ids:
+            if similarity < similarity_threshold:
+                skipped_unions.append(
+                    {
+                        "left_node_id": node_id,
+                        "right_node_id": neighbor_id,
+                        "similarity": similarity,
+                        "reason": "below_semantic_threshold",
+                    }
+                )
+                continue
+            if neighbor_id not in candidate_ids:
+                skipped_unions.append(
+                    {
+                        "left_node_id": node_id,
+                        "right_node_id": neighbor_id,
+                        "similarity": similarity,
+                        "reason": "neighbor_not_in_candidate_set",
+                    }
+                )
                 continue
             if not self._can_union_semantic_neighbors(
                 rows_by_id[node_id],
@@ -309,17 +363,38 @@ class DreamCompiler:
                     self.governance.settings.entityless_union_similarity_threshold
                 ),
             ):
+                decision = {
+                    "left_node_id": node_id,
+                    "right_node_id": neighbor_id,
+                    "similarity": similarity,
+                    "decision": "blocked",
+                    "reason": "entity_gate_rejected_union",
+                    "left_entities": metadata_entities(rows_by_id[node_id].metadata),
+                    "right_entities": metadata_entities(rows_by_id[neighbor_id].metadata),
+                }
+                skipped_unions.append(decision)
+                entity_gate_decisions.append(decision)
                 continue
+            entity_gate_decisions.append(
+                {
+                    "left_node_id": node_id,
+                    "right_node_id": neighbor_id,
+                    "similarity": similarity,
+                    "decision": "allowed",
+                    "reason": "entity_gate_allowed_union",
+                    "left_entities": metadata_entities(rows_by_id[node_id].metadata),
+                    "right_entities": metadata_entities(rows_by_id[neighbor_id].metadata),
+                }
+            )
             union(node_id, neighbor_id)
 
         grouped: dict[str, list[NodeRecord]] = defaultdict(list)
         for node in candidates:
             grouped[find(node.id)].append(rows_by_id[node.id])
-        return [
-            component
-            for component in grouped.values()
-            if len(component) >= min_cluster_size
+        clusters = [
+            component for component in grouped.values() if len(component) >= min_cluster_size
         ]
+        return clusters, skipped_unions, entity_gate_decisions
 
     def _create_host_compaction_task(
         self,
@@ -379,46 +454,46 @@ class DreamCompiler:
             if edge.src_id in cluster_id_set:
                 redirected_edges.append(
                     EdgeRecord(
-                    src_id=super_node.id,
-                    dst_id=edge.dst_id,
-                    relation=edge.relation,
-                    strength_score=edge.strength_score,
-                    durability=edge.durability,
-                    status=edge.status,
-                    metadata={
-                        **edge.metadata,
-                        "provenance": {
-                            **(edge.metadata.get("provenance", {})),
-                            "creation_mode": "dream_generated",
+                        src_id=super_node.id,
+                        dst_id=edge.dst_id,
+                        relation=edge.relation,
+                        strength_score=edge.strength_score,
+                        durability=edge.durability,
+                        status=edge.status,
+                        metadata={
+                            **edge.metadata,
+                            "provenance": {
+                                **(edge.metadata.get("provenance", {})),
+                                "creation_mode": "dream_generated",
+                            },
+                            "redirect": {
+                                **(edge.metadata.get("redirect", {})),
+                                "from": edge.src_id,
+                            },
                         },
-                        "redirect": {
-                            **(edge.metadata.get("redirect", {})),
-                            "from": edge.src_id,
-                        },
-                    },
-                )
+                    )
                 )
             else:
                 redirected_edges.append(
                     EdgeRecord(
-                    src_id=edge.src_id,
-                    dst_id=super_node.id,
-                    relation=edge.relation,
-                    strength_score=edge.strength_score,
-                    durability=edge.durability,
-                    status=edge.status,
-                    metadata={
-                        **edge.metadata,
-                        "provenance": {
-                            **(edge.metadata.get("provenance", {})),
-                            "creation_mode": "dream_generated",
+                        src_id=edge.src_id,
+                        dst_id=super_node.id,
+                        relation=edge.relation,
+                        strength_score=edge.strength_score,
+                        durability=edge.durability,
+                        status=edge.status,
+                        metadata={
+                            **edge.metadata,
+                            "provenance": {
+                                **(edge.metadata.get("provenance", {})),
+                                "creation_mode": "dream_generated",
+                            },
+                            "redirect": {
+                                **(edge.metadata.get("redirect", {})),
+                                "to": edge.dst_id,
+                            },
                         },
-                        "redirect": {
-                            **(edge.metadata.get("redirect", {})),
-                            "to": edge.dst_id,
-                        },
-                    },
-                )
+                    )
                 )
 
         redirected_edges.extend(

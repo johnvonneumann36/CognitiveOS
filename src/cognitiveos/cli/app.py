@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +14,8 @@ from cognitiveos.models import AddPayloadType
 from cognitiveos.service import CognitiveOSService
 
 app = typer.Typer(help="CognitiveOS command line interface.")
+config_app = typer.Typer(help="Inspect resolved CognitiveOS configuration.")
+app.add_typer(config_app, name="config")
 
 
 def _service(
@@ -32,6 +35,31 @@ def _print_json(payload: object) -> None:
     typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def _settings_to_json(settings: AppSettings) -> dict[str, object]:
+    path_fields = {
+        "project_root",
+        "db_path",
+        "memory_output_path",
+        "memory_mirror_paths",
+        "bootstrap_dir",
+        "background_log_dir",
+        "snapshot_dir",
+    }
+    payload: dict[str, object] = {}
+    for field in fields(settings):
+        value = getattr(settings, field.name)
+        if field.name in path_fields:
+            if isinstance(value, list):
+                payload[field.name] = [str(item) for item in value]
+            else:
+                payload[field.name] = str(value)
+        elif field.name.endswith("_api_key") and value:
+            payload[field.name] = "<redacted>"
+        else:
+            payload[field.name] = value
+    return payload
+
+
 def _parse_key_value_pairs(pairs: list[str] | None) -> dict[str, str]:
     parsed: dict[str, str] = {}
     for item in pairs or []:
@@ -48,6 +76,37 @@ def _parse_key_value_pairs(pairs: list[str] | None) -> dict[str, str]:
             )
         parsed[key] = value
     return parsed
+
+
+@config_app.command("show")
+def config_show(
+    db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
+    memory_output_path: Annotated[
+        Path | None,
+        typer.Option(help="Override the static memory output path."),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(help="Project root used to resolve .env and runtime paths."),
+    ] = None,
+) -> None:
+    settings = AppSettings.from_env(
+        db_path=db_path,
+        memory_output_path=memory_output_path,
+        project_root=project_root,
+    )
+    _print_json(
+        {
+            "status": "success",
+            "source_hints": {
+                "project_root": "argument or current working directory",
+                "env_file": str(settings.project_root / ".env"),
+                "environment": "COGNITIVEOS_* variables override .env values",
+                "api_keys": "redacted when present",
+            },
+            "config": _settings_to_json(settings),
+        }
+    )
 
 
 @app.command("init-db")
@@ -432,9 +491,7 @@ def bootstrap_host(
     ] = False,
     project_root: Annotated[
         Path | None,
-        typer.Option(
-            help="Project root used for bootstrap artifacts and host install targets."
-        ),
+        typer.Option(help="Project root used for bootstrap artifacts and host install targets."),
     ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:
@@ -462,9 +519,7 @@ def host_bootstrap_status(
     ] = "generic",
     project_root: Annotated[
         Path | None,
-        typer.Option(
-            help="Project root used for bootstrap artifacts and host install targets."
-        ),
+        typer.Option(help="Project root used for bootstrap artifacts and host install targets."),
     ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:
@@ -498,9 +553,7 @@ def submit_host_onboarding(
     ] = "generic",
     project_root: Annotated[
         Path | None,
-        typer.Option(
-            help="Project root used for bootstrap artifacts and host install targets."
-        ),
+        typer.Option(help="Project root used for bootstrap artifacts and host install targets."),
     ] = None,
     db_path: Annotated[Path | None, typer.Option(help="Override the SQLite database path.")] = None,
 ) -> None:

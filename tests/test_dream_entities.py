@@ -52,18 +52,24 @@ def test_extract_node_entities_uses_shape_only_fallback() -> None:
         content="",
         tags=[],
     ) == ["CognitiveOS", "LM Studio", "CLIProxyAPI"]
-    assert extract_node_entities(
-        name=None,
-        description="feedray packaging",
-        content="",
-        tags=["feedray"],
-    ) == []
-    assert extract_node_entities(
-        name=None,
-        description="ordinary runtime memory",
-        content="",
-        tags=[],
-    ) == []
+    assert (
+        extract_node_entities(
+            name=None,
+            description="feedray packaging",
+            content="",
+            tags=["feedray"],
+        )
+        == []
+    )
+    assert (
+        extract_node_entities(
+            name=None,
+            description="ordinary runtime memory",
+            content="",
+            tags=[],
+        )
+        == []
+    )
 
 
 def test_service_entity_extraction_uses_chat_before_heuristic(tmp_path: Path) -> None:
@@ -210,3 +216,37 @@ def test_projection_skips_superseded_super_nodes(tmp_path: Path) -> None:
 
     assert "Compressed Dream Memory" not in memory_text
     assert "CognitiveOS release workflow" not in memory_text
+
+
+def test_dream_result_explains_run_and_projection(tmp_path: Path) -> None:
+    service, settings = build_service(tmp_path)
+    for payload in [
+        "CognitiveOS release workflow and memory runtime",
+        "CognitiveOS host bootstrap and MCP memory tooling",
+    ]:
+        service.add_node(
+            payload_type=AddPayloadType.CONTENT,
+            payload=payload,
+            tags=["project", "cognitiveos"],
+            force=True,
+        )
+
+    result = service.run_dream(
+        output_path=settings.memory_output_path,
+        window_hours=24,
+        min_accesses=1,
+        min_cluster_size=2,
+        max_candidates=20,
+        similarity_threshold=0.6,
+    )
+    super_node = service.repository.get_node(result.super_nodes[0].node_id)
+
+    assert result.effective_config["semantic_threshold"] == 0.6
+    assert result.effective_config["entityless_threshold"] == 0.8
+    assert len(result.candidate_explanations) == 2
+    assert result.cluster_explanations[0]["decision"] == "eligible_for_compaction"
+    assert result.entity_gate_decisions[0]["decision"] == "allowed"
+    assert result.projected_memory["projection_policy_version"] == "memory-projection-v1"
+    assert result.projected_memory["max_projected_super_nodes"] == 5
+    assert result.projected_memory["compressed_node_ids"] == [super_node.id]
+    assert super_node.metadata["projection_policy_version"] == "memory-projection-v1"

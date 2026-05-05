@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognitiveos"
-version = "0.1.4"
+version = "0.2.0"
 description = "Local-first cognitive graph middleware with CLI, MCP, and Docker runtime targets."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,8 +38,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "ijson>=3.3",
   "pytest>=8.3,<9.0",
   "ruff>=0.11,<0.12",
+]
+benchmark = [
+  "ijson>=3.3",
 ]
 local-hf = [
   "sentence-transformers>=3.4,<4.0",

@@ -29,7 +29,7 @@
 </p>
 
 > [!IMPORTANT]
-> `v0.1.4` is live on PyPI: `pip install cognitiveos`
+> `v0.2.0` is the next release target: `pip install cognitiveos`
 >
 > For compact host mounts, prefer `--profile compact-core`.
 > `compact-core` exposes `search`, `read`, `add`, `update`, `link`, and `dream`,
