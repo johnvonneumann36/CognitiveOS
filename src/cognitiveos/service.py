@@ -79,6 +79,16 @@ class CognitiveOSService:
         "workspace": ["profile", "bootstrap"],
         "engineering": ["profile", "preferences", "engineering"],
     }
+    MEMORY_DOCUMENT_FILENAMES = {
+        ".clinerules",
+        ".rules",
+        "agents.md",
+        "agents.override.md",
+        "claude.md",
+        "gemini.md",
+        "global_rules.md",
+        "qwen.md",
+    }
     SUPPORTED_HOST_KINDS = {
         "generic",
         "codex",
@@ -86,6 +96,25 @@ class CognitiveOSService:
         "claude_desktop",
         "gemini_cli",
         "cursor",
+        "opencode",
+        "openclaw",
+        "hermes",
+        "windsurf",
+        "cline",
+        "roo_code",
+        "qwen_code",
+        "kiro",
+        "amazon_q",
+        "github_copilot",
+        "junie",
+        "zed",
+        "amp",
+        "augment",
+        "kilo_code",
+        "continue",
+        "codegen",
+        "aider",
+        "crush",
     }
     ALLOWED_DURABILITY_VALUES = {"working", "durable", "pinned", "ephemeral"}
     BACKGROUND_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cognitiveos-bg")
@@ -598,22 +627,16 @@ class CognitiveOSService:
                     snapshot_path.unlink()
             except OSError:
                 logger.exception("snapshot_cleanup_failed path=%s", snapshot_path)
-                notices.append(
-                    f"Snapshot cleanup failed for deleted node: {snapshot_path}"
-                )
+                notices.append(f"Snapshot cleanup failed for deleted node: {snapshot_path}")
         return Receipt(
             status="success" if removed else "not_found",
             action_taken=action_taken,
             node_id=node_id if removed else None,
             reason=(
-                f"Node deleted via {trigger}."
-                if removed
-                else f"Node '{node_id}' was not found."
+                f"Node deleted via {trigger}." if removed else f"Node '{node_id}' was not found."
             ),
             suggestion=(
-                f"Triggered by reserved tag '{self.DELETE_VIA_UPDATE_TAG}'."
-                if removed
-                else None
+                f"Triggered by reserved tag '{self.DELETE_VIA_UPDATE_TAG}'." if removed else None
             ),
             edge={
                 "removed_node_id": node_id,
@@ -1027,12 +1050,23 @@ class CognitiveOSService:
     def compile_memory_snapshot(self, output_path: Path | None = None) -> Path:
         self.initialize()
         target_path = (output_path or self.settings.memory_output_path).resolve()
-        compiled_path = self.governance.compile_memory_snapshot(target_path)
+        target_is_memory_document = self._is_host_memory_document_path(target_path)
+        compiled_path = self._raw_memory_output_path() if target_is_memory_document else target_path
+        compiled_path.parent.mkdir(parents=True, exist_ok=True)
+        compiled_path = self.governance.compile_memory_snapshot(compiled_path)
+        memory_text = compiled_path.read_text(encoding="utf-8")
+        if target_is_memory_document:
+            self._write_memory_document(target_path, memory_text)
         for mirror_path in self._registered_memory_output_paths(primary_path=compiled_path):
             if mirror_path == compiled_path:
                 continue
+            mirror_path.parent.mkdir(parents=True, exist_ok=True)
             self.governance.compile_memory_snapshot(mirror_path)
-        return compiled_path
+        for document_path in self._registered_memory_document_paths(primary_path=target_path):
+            if target_is_memory_document and document_path == target_path:
+                continue
+            self._write_memory_document(document_path, memory_text)
+        return target_path if target_is_memory_document else compiled_path
 
     def get_host_bootstrap_status(
         self,
@@ -1137,9 +1171,9 @@ class CognitiveOSService:
                 "Missing onboarding answers for: " + ", ".join(sorted(missing))
             )
 
-        existing_node_ids = self.repository.get_app_state_json(
-            self.APP_STATE_BOOTSTRAP_ONBOARDING_NODE_IDS
-        ) or {}
+        existing_node_ids = (
+            self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_ONBOARDING_NODE_IDS) or {}
+        )
         next_node_ids: dict[str, str] = {}
         for section in self._bootstrap_onboarding_sections(cleaned_answers):
             existing_node_id = existing_node_ids.get(section["section_id"])
@@ -1297,9 +1331,7 @@ class CognitiveOSService:
             mount_manifest_path=str(artifact_paths["mount_manifest_path"]),
             mcp_config_path=str(artifact_paths["mcp_config_path"]),
             onboarding_path=str(artifact_paths["onboarding_path"]),
-            host_instruction_path=(
-                str(host_instruction_path) if host_instruction_path else None
-            ),
+            host_instruction_path=(str(host_instruction_path) if host_instruction_path else None),
             host_project_config_path=(
                 str(host_project_config_path) if host_project_config_path else None
             ),
@@ -1433,18 +1465,15 @@ class CognitiveOSService:
         due_age = False
         reminder = None
         if reference_time is not None:
-            reference_dt = datetime.fromisoformat(
-                reference_time.replace(" ", "T")
-            ).replace(tzinfo=UTC)
+            reference_dt = datetime.fromisoformat(reference_time.replace(" ", "T")).replace(
+                tzinfo=UTC
+            )
             hours_since_reference = (datetime.now(UTC) - reference_dt).total_seconds() / 3600
             age_window_reached = (
                 last_completed_at is not None
                 and hours_since_reference >= self.settings.dream_max_age_hours
             )
-            if (
-                age_window_reached
-                and event_count >= self.settings.dream_age_min_event_count
-            ):
+            if age_window_reached and event_count >= self.settings.dream_age_min_event_count:
                 due_age = True
                 reasons.append(
                     f"{hours_since_reference:.1f} hours have passed since the last dream "
@@ -1693,11 +1722,11 @@ class CognitiveOSService:
     ) -> dict[str, Any]:
         metadata = dict(existing_metadata or {})
         profile_payload = (
-            dict(metadata.get("profile"))
-            if isinstance(metadata.get("profile"), dict)
-            else {}
+            dict(metadata.get("profile")) if isinstance(metadata.get("profile"), dict) else {}
         )
-        bootstrap_section = section if section in {"identity", "communication", "workspace"} else None
+        bootstrap_section = (
+            section if section in {"identity", "communication", "workspace"} else None
+        )
         metadata["profile"] = {
             **profile_payload,
             "kind": "system" if bootstrap_section else "user",
@@ -1737,7 +1766,9 @@ class CognitiveOSService:
             value = merged_lines.pop(field_key, None)
             if value is None:
                 continue
-            rendered.append(f"{self._canonical_profile_field_label(section=section, key=field_key)}: {value}")
+            rendered.append(
+                f"{self._canonical_profile_field_label(section=section, key=field_key)}: {value}"
+            )
         for field_key, value in merged_lines.items():
             rendered.append(
                 f"{self._canonical_profile_field_label(section=section, key=field_key)}: {value}"
@@ -2093,7 +2124,7 @@ class CognitiveOSService:
         )
         system_prompt = (
             "Extract stable boundary entities from one memory node. "
-            "Return strict JSON only: {\"entities\":[\"EntityName\"]}. "
+            'Return strict JSON only: {"entities":["EntityName"]}. '
             "Prefer project, product, repository, organization, tool, platform, "
             "service, library, dataset, or named system entities. Exclude generic "
             "concepts such as memory, runtime, release, workflow, package, profile, "
@@ -2141,9 +2172,7 @@ class CognitiveOSService:
         if len(compact) > self.DOCUMENT_PROFILE_PROMPT_CHARS:
             head = compact[:12000].rstrip()
             tail = compact[-4000:].lstrip()
-            compact = (
-                f"{head}\n\n[content omitted for length]\n\n{tail}"
-            )
+            compact = f"{head}\n\n[content omitted for length]\n\n{tail}"
         parts = [instruction]
         if name:
             parts.extend(["", f"Document name: {name}"])
@@ -2231,20 +2260,26 @@ class CognitiveOSService:
             if isinstance(marker, str) and marker.strip()
         ]
         if collection_class == "repository":
-            marker_text = ", ".join(important_markers[:4]) if important_markers else "no major markers"
+            marker_text = (
+                ", ".join(important_markers[:4]) if important_markers else "no major markers"
+            )
             repo_hint = repository_hint(important_markers) or "software project"
             return (
                 f"Repository rooted at {folder_name}; top-level markers include {marker_text}; "
                 f"likely {repo_hint.lower()}."
             )[: self.DOCUMENT_DESCRIPTION_MAX_CHARS]
         if collection_class == "media_collection":
-            media_summary = self._format_collection_count_summary(collection.get("file_type_counts", {}))
+            media_summary = self._format_collection_count_summary(
+                collection.get("file_type_counts", {})
+            )
             return (
                 f"Media collection rooted at {folder_name}; contains mostly {media_summary}; "
                 "use this source anchor when revisiting photos, videos, or media files."
             )[: self.DOCUMENT_DESCRIPTION_MAX_CHARS]
         if collection_class == "document_collection":
-            doc_summary = self._format_collection_count_summary(collection.get("file_type_counts", {}))
+            doc_summary = self._format_collection_count_summary(
+                collection.get("file_type_counts", {})
+            )
             return (
                 f"Document collection rooted at {folder_name}; contains mostly {doc_summary}; "
                 "use this source anchor when revisiting documents or notes."
@@ -2310,9 +2345,7 @@ class CognitiveOSService:
                 node.metadata.get("document_profile", {}).get("generated_tags", [])
             )
         generated_lc = {tag.strip().lower() for tag in generated_tags if isinstance(tag, str)}
-        user_tags = [
-            tag for tag in node.tags if tag.strip().lower() not in generated_lc
-        ]
+        user_tags = [tag for tag in node.tags if tag.strip().lower() not in generated_lc]
         return user_tags, generated_tags
 
     @staticmethod
@@ -2395,10 +2428,9 @@ class CognitiveOSService:
         for node_id in all_ids:
             semantic_score = semantic_rrf.get(node_id, 0.0)
             keyword_score = keyword_rrf.get(node_id, 0.0)
-            total_score = (
-                (semantic_weight / total_weight) * semantic_score
-                + (keyword_weight / total_weight) * keyword_score
-            )
+            total_score = (semantic_weight / total_weight) * semantic_score + (
+                keyword_weight / total_weight
+            ) * keyword_score
             scores[node_id] = {
                 "semantic_score": round(semantic_score, 6),
                 "keyword_score": round(keyword_score, 6),
@@ -2422,8 +2454,7 @@ class CognitiveOSService:
     @staticmethod
     def _rank_to_rrf(matches: list[tuple[str, float]], *, k: int = 60) -> dict[str, float]:
         return {
-            node_id: 1.0 / (k + rank)
-            for rank, (node_id, _raw_score) in enumerate(matches, start=1)
+            node_id: 1.0 / (k + rank) for rank, (node_id, _raw_score) in enumerate(matches, start=1)
         }
 
     def _find_similarity_conflicts(self, embedding: list[float]) -> list[dict[str, Any]]:
@@ -2523,10 +2554,7 @@ class CognitiveOSService:
 
         remaining_tasks = self.repository.count_pending_dream_compaction_tasks(run_id)
         notes = json.loads(run_row["notes_json"] or "[]")
-        note = (
-            f"Dream compaction task {task_id} resolved via "
-            f"{resolution_backend} into {node_id}."
-        )
+        note = f"Dream compaction task {task_id} resolved via {resolution_backend} into {node_id}."
         notes.append(note)
         memory_path = str(self.compile_memory_snapshot())
         self.repository.complete_dream_run(
@@ -2611,9 +2639,8 @@ class CognitiveOSService:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         creationflags = 0
         if sys.platform == "win32":
-            creationflags = (
-                getattr(subprocess, "DETACHED_PROCESS", 0)
-                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
             )
         with log_path.open("ab") as log_handle:
             subprocess.Popen(
@@ -2639,10 +2666,7 @@ class CognitiveOSService:
             candidate = Path(command[0]).stem
         else:
             candidate = "background-job"
-        safe = [
-            char.lower() if char.isalnum() else "-"
-            for char in candidate.strip()
-        ]
+        safe = [char.lower() if char.isalnum() else "-" for char in candidate.strip()]
         normalized = "".join(safe).strip("-")
         return normalized or "background-job"
 
@@ -2661,11 +2685,7 @@ class CognitiveOSService:
         )
         if not isinstance(onboarding_node_ids, dict):
             return
-        filtered = {
-            key: value
-            for key, value in onboarding_node_ids.items()
-            if value != node_id
-        }
+        filtered = {key: value for key, value in onboarding_node_ids.items() if value != node_id}
         if filtered != onboarding_node_ids:
             self.repository.set_app_state_json(
                 self.APP_STATE_BOOTSTRAP_ONBOARDING_NODE_IDS,
@@ -2735,7 +2755,7 @@ class CognitiveOSService:
         end_index = snapshot_text.find(delimiter, 4)
         if end_index == -1:
             return snapshot_text.strip()
-        return snapshot_text[end_index + len(delimiter):].strip()
+        return snapshot_text[end_index + len(delimiter) :].strip()
 
     @staticmethod
     def _snapshot_content_hash_matches(content: str | bytes, snapshot: dict[str, Any]) -> bool:
@@ -2776,9 +2796,9 @@ class CognitiveOSService:
         }
 
     def _host_mount_targets(self, host_kind: str) -> tuple[Path | None, Path | None]:
-        project_root = self._project_root()
         if host_kind == "codex":
-            return project_root / "AGENTS.md", project_root / ".codex" / "config.toml"
+            codex_home = Path.home() / ".codex"
+            return codex_home / "AGENTS.md", codex_home / "config.toml"
         return None, None
 
     def _bootstrap_onboarding_questions(self) -> list[HostOnboardingQuestion]:
@@ -2805,8 +2825,7 @@ class CognitiveOSService:
                 id="response_style",
                 prompt="What response style should the host default to?",
                 guidance=(
-                    "Describe stable preferences such as concise, direct, "
-                    "pragmatic, or detailed."
+                    "Describe stable preferences such as concise, direct, pragmatic, or detailed."
                 ),
                 example="Concise, direct, pragmatic",
             ),
@@ -2940,7 +2959,13 @@ class CognitiveOSService:
         ordered_paths: list[Path] = [primary_path.resolve()]
         if self.settings.memory_output_path.resolve() not in ordered_paths:
             ordered_paths.append(self.settings.memory_output_path.resolve())
-        targets = self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS) or {}
+        for mirror_path in self.settings.memory_mirror_paths:
+            candidate = mirror_path.resolve()
+            if candidate not in ordered_paths and not self._is_host_memory_document_path(candidate):
+                ordered_paths.append(candidate)
+        targets = (
+            self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS) or {}
+        )
         for host_kind, record in targets.items():
             if not isinstance(record, dict):
                 continue
@@ -2951,7 +2976,33 @@ class CognitiveOSService:
                 candidate = self._host_memory_output_path(host_kind=host_kind)
             else:
                 continue
-            if candidate not in ordered_paths:
+            if candidate not in ordered_paths and not self._is_host_memory_document_path(candidate):
+                ordered_paths.append(candidate)
+        return ordered_paths
+
+    def _registered_memory_document_paths(self, *, primary_path: Path) -> list[Path]:
+        ordered_paths: list[Path] = []
+        primary = primary_path.resolve()
+        if self._is_host_memory_document_path(primary):
+            ordered_paths.append(primary)
+        for mirror_path in self.settings.memory_mirror_paths:
+            candidate = mirror_path.resolve()
+            if candidate not in ordered_paths and self._is_host_memory_document_path(candidate):
+                ordered_paths.append(candidate)
+        targets = (
+            self.repository.get_app_state_json(self.APP_STATE_BOOTSTRAP_HOST_MEMORY_TARGETS) or {}
+        )
+        for host_kind, record in targets.items():
+            if not isinstance(record, dict):
+                continue
+            value = record.get("memory_output_path")
+            if isinstance(value, str) and value.strip():
+                candidate = Path(value).expanduser().resolve()
+            elif isinstance(host_kind, str) and host_kind.strip():
+                candidate = self._host_memory_output_path(host_kind=host_kind)
+            else:
+                continue
+            if candidate not in ordered_paths and self._is_host_memory_document_path(candidate):
                 ordered_paths.append(candidate)
         return ordered_paths
 
@@ -3031,7 +3082,9 @@ class CognitiveOSService:
         return marker in path.read_text(encoding="utf-8")
 
     @staticmethod
-    def _write_managed_block(path: Path, *, marker_name: str, body: str) -> None:
+    def _write_managed_block(
+        path: Path, *, marker_name: str, body: str, keep_at_end: bool = False
+    ) -> None:
         start_marker = f"# {marker_name} START"
         end_marker = f"# {marker_name} END"
         managed_block = f"{start_marker}\n{body.rstrip()}\n{end_marker}\n"
@@ -3040,19 +3093,35 @@ class CognitiveOSService:
         if start_marker in existing and end_marker in existing:
             prefix, remainder = existing.split(start_marker, 1)
             _, suffix = remainder.split(end_marker, 1)
-            next_content = prefix.rstrip()
-            if next_content:
-                next_content += "\n\n"
-            next_content += managed_block
-            suffix = suffix.lstrip("\n")
-            if suffix:
-                next_content += "\n" + suffix
+            if keep_at_end:
+                base_content = (prefix.rstrip() + "\n\n" + suffix.lstrip("\n")).strip()
+                next_content = base_content
+                if next_content:
+                    next_content += "\n\n"
+                next_content += managed_block
+            else:
+                next_content = prefix.rstrip()
+                if next_content:
+                    next_content += "\n\n"
+                next_content += managed_block
+                suffix = suffix.lstrip("\n")
+                if suffix:
+                    next_content += "\n" + suffix
         else:
             next_content = existing.rstrip()
             if next_content:
                 next_content += "\n\n"
             next_content += managed_block
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(next_content.rstrip() + "\n", encoding="utf-8")
+
+    def _write_memory_document(self, path: Path, memory_text: str) -> None:
+        self._write_managed_block(
+            path,
+            marker_name="COGNITIVEOS MEMORY SNAPSHOT",
+            body=memory_text,
+            keep_at_end=True,
+        )
 
     def _render_host_instruction_block(self, system_prompt_block: str) -> str:
         return "\n".join(
@@ -3065,7 +3134,7 @@ class CognitiveOSService:
         )
 
     def _codex_project_config_block(self) -> str:
-        memory_output_path = self._host_memory_output_path(host_kind="codex")
+        memory_output_path = self._raw_memory_output_path()
         return "\n".join(
             [
                 "[mcp_servers.cognitiveos]",
@@ -3091,10 +3160,7 @@ class CognitiveOSService:
         limited_codex_surface = host_kind.strip().lower().replace("-", "_") == "codex"
         lines = [
             "Cold-start mount procedure:",
-            (
-                f"1. Read `{memory_path}` as the baseline memory before any "
-                "memory retrieval call."
-            ),
+            (f"1. Read `{memory_path}` as the baseline memory before any memory retrieval call."),
             (
                 "2. Call `get_host_bootstrap_status` with the current host kind "
                 "at the start of the session."
@@ -3155,10 +3221,7 @@ class CognitiveOSService:
                     "- `add`: use `type=content` for raw text, `type=file` for a file path "
                     "or URL, and `type=folder` for a local folder root."
                 ),
-                (
-                    "- `update`: reuse the existing node id and send the replacement "
-                    "`content`."
-                ),
+                ("- `update`: reuse the existing node id and send the replacement `content`."),
                 (
                     "- `link`: pass `src_id`, `dst_id`, and a concrete directed `relation` "
                     "such as `supports` or `depends_on`."
@@ -3174,48 +3237,51 @@ class CognitiveOSService:
 
     def _bootstrap_prompt(self, memory_path: Path, *, host_kind: str) -> str:
         limited_codex_surface = host_kind.strip().lower().replace("-", "_") == "codex"
-        return "\n".join(
-            [
-                "# CognitiveOS Host Bootstrap",
-                "",
-                "Cold-start mount procedure:",
-                (
-                    f"1. Load `{memory_path}` as read-only baseline memory "
-                    "before the first memory tool call."
-                ),
-                (
-                    f"2. Install the `{host_kind}` host mount if available, then start the "
-                    "`cognitiveos-mcp` server and mount it as an MCP server."
-                ),
-                (
-                    "3. At first startup, ask the onboarding questions from "
-                    "`onboarding-questions.json` and submit them through "
-                    "`submit_host_onboarding` before depending on memory."
-                ),
-                (
-                    "4. Prefer MCP tools for search/read/add/update/link/dream over ad hoc "
-                    "filesystem parsing."
-                    if limited_codex_surface
-                    else "4. Prefer MCP tools for search/read/add/update/link/dream "
-                    "over ad hoc filesystem parsing."
-                ),
-                (
-                    "5. For profile writes, update canonical nodes instead of creating parallel "
-                    "ones for identity, communication, workspace, or engineering preferences."
-                ),
-                (
-                    "6. If any response includes a dream reminder and the host supports background "
-                    "subagents, delegate the `dream` task to a background subagent."
-                ),
-                (
-                    "7. If a dream run returns pending compactions, have the host agent compress "
-                    "those clusters and submit the resolution back through `dream`."
-                ),
-                "",
-                "Recommended MCP command:",
-                (f"`{self._host_mcp_command(host_kind=host_kind)}`"),
-            ]
-        ) + "\n"
+        return (
+            "\n".join(
+                [
+                    "# CognitiveOS Host Bootstrap",
+                    "",
+                    "Cold-start mount procedure:",
+                    (
+                        f"1. Load `{memory_path}` as read-only baseline memory "
+                        "before the first memory tool call."
+                    ),
+                    (
+                        f"2. Install the `{host_kind}` host mount if available, then start the "
+                        "`cognitiveos-mcp` server and mount it as an MCP server."
+                    ),
+                    (
+                        "3. At first startup, ask the onboarding questions from "
+                        "`onboarding-questions.json` and submit them through "
+                        "`submit_host_onboarding` before depending on memory."
+                    ),
+                    (
+                        "4. Prefer MCP tools for search/read/add/update/link/dream over ad hoc "
+                        "filesystem parsing."
+                        if limited_codex_surface
+                        else "4. Prefer MCP tools for search/read/add/update/link/dream "
+                        "over ad hoc filesystem parsing."
+                    ),
+                    (
+                        "5. For profile writes, update canonical nodes instead of creating parallel "
+                        "ones for identity, communication, workspace, or engineering preferences."
+                    ),
+                    (
+                        "6. If any response includes a dream reminder and the host supports background "
+                        "subagents, delegate the `dream` task to a background subagent."
+                    ),
+                    (
+                        "7. If a dream run returns pending compactions, have the host agent compress "
+                        "those clusters and submit the resolution back through `dream`."
+                    ),
+                    "",
+                    "Recommended MCP command:",
+                    (f"`{self._host_mcp_command(host_kind=host_kind)}`"),
+                ]
+            )
+            + "\n"
+        )
 
     @staticmethod
     def _host_mcp_profile(*, host_kind: str = "generic") -> str:
@@ -3227,13 +3293,65 @@ class CognitiveOSService:
     def _host_memory_output_path(self, *, host_kind: str = "generic") -> Path:
         normalized = host_kind.strip().lower().replace("-", "_")
         if normalized == "codex":
-            return Path.home() / ".codex" / "MEMORY.MD"
-        if normalized != "generic":
-            return self._project_root() / "MEMORY.MD"
+            return Path.home() / ".codex" / "AGENTS.md"
+        if normalized in {"claude_code", "claude_desktop"}:
+            return Path.home() / ".claude" / "CLAUDE.md"
+        if normalized == "gemini_cli":
+            return Path.home() / ".gemini" / "GEMINI.md"
+        if normalized == "cursor":
+            return self._project_root() / ".cursor" / "rules" / "cognitiveos.mdc"
+        if normalized == "opencode":
+            return Path.home() / ".config" / "opencode" / "AGENTS.md"
+        if normalized == "openclaw":
+            return Path.home() / ".openclaw" / "workspace" / "MEMORY.md"
+        if normalized == "hermes":
+            return Path.home() / ".hermes" / "memories" / "MEMORY.md"
+        if normalized == "windsurf":
+            return Path.home() / ".codeium" / "windsurf" / "memories" / "global_rules.md"
+        if normalized == "cline":
+            return self._project_root() / ".clinerules"
+        if normalized == "roo_code":
+            return Path.home() / ".roo" / "rules" / "cognitiveos.md"
+        if normalized == "qwen_code":
+            return Path.home() / ".qwen" / "QWEN.md"
+        if normalized == "kiro":
+            return Path.home() / ".kiro" / "steering" / "cognitiveos.md"
+        if normalized == "amazon_q":
+            return self._project_root() / ".amazonq" / "rules" / "cognitiveos.md"
+        if normalized == "github_copilot":
+            return self._project_root() / ".github" / "copilot-instructions.md"
+        if normalized == "junie":
+            return self._project_root() / ".junie" / "guidelines.md"
+        if normalized == "zed":
+            return self._project_root() / ".rules"
+        if normalized == "amp":
+            return Path.home() / ".config" / "amp" / "AGENTS.md"
+        if normalized == "augment":
+            return self._project_root() / ".augment" / "rules" / "cognitiveos.md"
+        if normalized == "kilo_code":
+            return self._project_root() / "AGENTS.md"
+        if normalized == "continue":
+            return self._project_root() / ".continue" / "rules" / "cognitiveos.md"
+        if normalized == "codegen":
+            return self._project_root() / "AGENTS.md"
+        if normalized == "aider":
+            return self._project_root() / "CONVENTIONS.md"
+        if normalized == "crush":
+            return Path.home() / ".config" / "crush" / "AGENTS.md"
         return self.settings.memory_output_path
 
+    def _is_host_memory_document_path(self, path: Path) -> bool:
+        name = path.name.lower()
+        suffix = path.suffix.lower()
+        if name in self.MEMORY_DOCUMENT_FILENAMES:
+            return True
+        if suffix == ".mdc":
+            return True
+        marker_parts = {part.lower() for part in path.parts}
+        return bool({"rules", "steering", "memory-bank"} & marker_parts)
+
     def _host_mcp_args(self, *, host_kind: str = "generic") -> list[str]:
-        memory_output_path = self._host_memory_output_path(host_kind=host_kind)
+        memory_output_path = self._raw_memory_output_path()
         return [
             "--transport",
             "stdio",
@@ -3246,6 +3364,15 @@ class CognitiveOSService:
             "--memory-output-path",
             str(memory_output_path),
         ]
+
+    def _raw_memory_output_path(self) -> Path:
+        configured = self.settings.memory_output_path.resolve()
+        if not self._is_host_memory_document_path(configured):
+            return configured
+        db_path = self.settings.db_path.resolve()
+        if db_path.parent.name == "data":
+            return db_path.parent.parent / "MEMORY.MD"
+        return db_path.parent / "MEMORY.MD"
 
     def _host_mcp_command(self, *, host_kind: str = "generic") -> str:
         return " ".join(["cognitiveos-mcp", *self._host_mcp_args(host_kind=host_kind)])

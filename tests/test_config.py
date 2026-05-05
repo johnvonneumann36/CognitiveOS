@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from cognitiveos.config import AppSettings
@@ -10,6 +11,7 @@ def _clear_runtime_env(monkeypatch) -> None:
         "COGNITIVEOS_HOME",
         "COGNITIVEOS_DB_PATH",
         "COGNITIVEOS_MEMORY_OUTPUT_PATH",
+        "COGNITIVEOS_MEMORY_MIRROR_PATHS",
         "COGNITIVEOS_BOOTSTRAP_DIR",
         "COGNITIVEOS_BACKGROUND_LOG_DIR",
         "COGNITIVEOS_SNAPSHOT_DIR",
@@ -39,6 +41,7 @@ def test_from_env_defaults_to_shared_runtime_home_and_project_local_bootstrap(
     assert settings.project_root == project.resolve()
     assert settings.db_path == shared_root / "data" / "cognitiveos.db"
     assert settings.memory_output_path == shared_root / "MEMORY.MD"
+    assert settings.memory_mirror_paths == []
     assert settings.bootstrap_dir == project / ".cognitiveos" / "bootstrap"
     assert settings.background_log_dir == shared_root / "logs"
     assert settings.snapshot_dir == shared_root / "snapshots"
@@ -76,6 +79,28 @@ def test_from_env_project_dotenv_can_override_dream_thresholds(
     assert settings.bootstrap_dir == project / ".cognitiveos" / "bootstrap"
     assert settings.similarity_threshold == 0.7
     assert settings.entityless_union_similarity_threshold == 0.9
+
+
+def test_from_env_parses_memory_mirror_paths(monkeypatch, tmp_path: Path) -> None:
+    _clear_runtime_env(monkeypatch)
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(
+        "COGNITIVEOS_MEMORY_MIRROR_PATHS",
+        os.pathsep.join([".codex/MEMORY.MD", str(home / ".gemini" / "MEMORY.MD")]),
+    )
+    monkeypatch.chdir(project)
+
+    settings = AppSettings.from_env()
+
+    assert settings.memory_mirror_paths == [
+        project / ".codex" / "MEMORY.MD",
+        home / ".gemini" / "MEMORY.MD",
+    ]
 
 
 def test_from_env_explicit_db_path_keeps_memory_in_same_runtime_root(

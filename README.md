@@ -638,14 +638,14 @@ src/cognitiveos/
 - default runtime paths are user-level and host-agnostic under `~/.cognitiveos/`
 - passing `--db-path` keeps `MEMORY.MD`, logs, and snapshots anchored to the same runtime root
 - bootstrap artifacts remain project-local by default under `./.cognitiveos/bootstrap/`
-- runtime locations can be overridden with `COGNITIVEOS_HOME`, `COGNITIVEOS_DB_PATH`, and `COGNITIVEOS_MEMORY_OUTPUT_PATH`
+- runtime locations can be overridden with `COGNITIVEOS_HOME`, `COGNITIVEOS_DB_PATH`, and `COGNITIVEOS_MEMORY_OUTPUT_PATH`; use `COGNITIVEOS_MEMORY_MIRROR_PATHS` with OS path separators to append each compiled snapshot as a managed block at the end of host-specific agent documents
 
 ### Bootstrap and Install
 
 - `bootstrap-host --host-kind generic` is the default bootstrap path and generates local host guidance under `.cognitiveos/bootstrap/`
-- `bootstrap-host --host-kind codex --install` writes a managed block into project-root `AGENTS.md` and `.codex/config.toml`
-- the managed install uses the reduced `compact-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`; for Codex, the mounted memory file is `~/.codex/MEMORY.MD` instead of a project-root `MEMORY.MD`
-- named host bootstrap targets remain registered memory outputs so future snapshot and dream sync can fan out across installed host surfaces
+- `bootstrap-host --host-kind codex --install` writes managed blocks into the Codex home files `~/.codex/AGENTS.md` and `~/.codex/config.toml`; it does not modify the repository `AGENTS.md` by default
+- the managed install uses the reduced `compact-core` profile and pins `--project-root`, `--db-path`, and `--memory-output-path`; host targets receive the complete memory snapshot appended to their native agent document, not a reference or summary
+- named host bootstrap targets remain registered memory outputs so future snapshot and dream sync can fan out across installed host surfaces; release checks must re-verify current host documentation before publishing a new CognitiveOS version because agent memory file conventions change over time
 - on first startup, the host should call `get_host_bootstrap_status`; when onboarding is required, ask the generated questions and submit them with `submit_host_onboarding`
 - files under `.cognitiveos/bootstrap/` are runtime-generated local artifacts and are not meant to be repository-tracked source files
 

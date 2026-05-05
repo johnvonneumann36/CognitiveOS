@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,16 @@ from cognitiveos.db.repository import SQLiteRepository
 from cognitiveos.exceptions import InvalidPayloadError
 from cognitiveos.models import AddPayloadType, NodeRecord
 from cognitiveos.service import CognitiveOSService
+
+
+@contextmanager
+def patched_home(path: Path):
+    original_home = Path.home
+    Path.home = classmethod(lambda cls: path)  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        Path.home = original_home  # type: ignore[method-assign]
 
 
 class FakeEmbeddingProvider:
@@ -199,6 +210,51 @@ def test_service_lifecycle(tmp_path: Path) -> None:
     rendered = service.compile_memory_snapshot()
     assert rendered == settings.memory_output_path
     assert "Communication Preference" in rendered.read_text(encoding="utf-8")
+
+
+def test_compile_memory_snapshot_writes_configured_mirrors(tmp_path: Path) -> None:
+    service, settings = build_service(tmp_path)
+    codex_memory = tmp_path / "host" / ".codex" / "MEMORY.MD"
+    gemini_memory = tmp_path / "host" / ".gemini" / "MEMORY.MD"
+    settings.memory_mirror_paths = [codex_memory, gemini_memory]
+
+    service.add_node(
+        payload_type=AddPayloadType.CONTENT,
+        payload="Mirror this memory into host-specific MEMORY.MD files.",
+        tags=["memory", "sync"],
+        name="Mirror Target",
+    )
+
+    rendered = service.compile_memory_snapshot()
+
+    assert rendered == settings.memory_output_path
+    assert codex_memory.read_text(encoding="utf-8") == rendered.read_text(encoding="utf-8")
+    assert gemini_memory.read_text(encoding="utf-8") == rendered.read_text(encoding="utf-8")
+
+
+def test_compile_memory_snapshot_appends_full_memory_to_agent_docs(tmp_path: Path) -> None:
+    service, settings = build_service(tmp_path)
+    codex_agents = tmp_path / "home" / ".codex" / "AGENTS.md"
+    codex_agents.parent.mkdir(parents=True)
+    codex_agents.write_text("# Existing agent guidance\n\nKeep this rule.\n", encoding="utf-8")
+    settings.memory_mirror_paths = [codex_agents]
+
+    create_system_profile_node(
+        service,
+        content="Append this full memory snapshot into the agent document.",
+        name="Agent Doc Memory",
+    )
+
+    service.compile_memory_snapshot()
+    first_text = codex_agents.read_text(encoding="utf-8")
+    service.compile_memory_snapshot()
+    second_text = codex_agents.read_text(encoding="utf-8")
+
+    assert first_text == second_text
+    assert first_text.startswith("# Existing agent guidance\n\nKeep this rule.")
+    assert first_text.rstrip().endswith("# COGNITIVEOS MEMORY SNAPSHOT END")
+    assert "Agent Doc Memory" in first_text
+    assert first_text.count("COGNITIVEOS MEMORY SNAPSHOT START") == 1
 
 
 def test_add_node_deduplicates_tags_case_insensitively(tmp_path: Path) -> None:
@@ -487,9 +543,7 @@ def test_add_remote_url_twice_blocks_without_force(
 ) -> None:
     service, _settings = build_service(tmp_path, chat_provider=FakeChatProvider())
     remote_url = "https://example.com/article"
-    current_html = {
-        "value": "<html><body><main><p>First remote version.</p></main></body></html>"
-    }
+    current_html = {"value": "<html><body><main><p>First remote version.</p></main></body></html>"}
 
     def fake_get(_url: str, **_kwargs: object) -> httpx.Response:
         return make_http_response(
@@ -518,9 +572,7 @@ def test_add_remote_url_with_force_refreshes_existing_node_in_place(
 ) -> None:
     service, _settings = build_service(tmp_path, chat_provider=FakeChatProvider())
     remote_url = "https://example.com/article"
-    current_html = {
-        "value": "<html><body><main><p>First remote version.</p></main></body></html>"
-    }
+    current_html = {"value": "<html><body><main><p>First remote version.</p></main></body></html>"}
 
     def fake_get(_url: str, **_kwargs: object) -> httpx.Response:
         return make_http_response(
@@ -716,7 +768,7 @@ def test_remote_pdf_creates_binary_snapshot_and_metadata_only_note(
             content_type="application/pdf",
             content=pdf_bytes,
             last_modified="Wed, 08 Apr 2026 10:00:00 GMT",
-            etag="W/\"pdf-v1\"",
+            etag='W/"pdf-v1"',
         )
 
     monkeypatch.setattr("cognitiveos.extractors.defaults.httpx.get", fake_get)
@@ -963,7 +1015,10 @@ def test_folder_search_read_and_update_keep_collection_root_semantics(tmp_path: 
 
     updated = service.repository.get_node(receipt.node_id)
     assert updated.metadata["collection"]["class"] == "repository"
-    assert updated.metadata["collection"]["sample_entries"] == original.metadata["collection"]["sample_entries"]
+    assert (
+        updated.metadata["collection"]["sample_entries"]
+        == original.metadata["collection"]["sample_entries"]
+    )
     assert updated.tags == ["repository", "runtime", "python"]
     assert updated.description
     assert updated.embedding is not None
@@ -1107,8 +1162,7 @@ def test_hybrid_ranking_and_ops_report(tmp_path: Path) -> None:
     assert len(hybrid_results) == 3
     assert hybrid_results[0].score is not None
     assert (
-        hybrid_results[0].semantic_score is not None
-        or hybrid_results[0].keyword_score is not None
+        hybrid_results[0].semantic_score is not None or hybrid_results[0].keyword_score is not None
     )
 
     reindex = service.reindex_embeddings()
@@ -1629,7 +1683,9 @@ def test_build_host_bootstrap_writes_mount_files(tmp_path: Path) -> None:
 
     status = service.get_host_bootstrap_status(output_dir=tmp_path / ".cognitiveos" / "bootstrap")
     assert status.host_kind == "generic"
-    assert any("only implemented for the managed host target" in notice for notice in status.notices)
+    assert any(
+        "only implemented for the managed host target" in notice for notice in status.notices
+    )
 
     mount_manifest = Path(bundle.mount_manifest_path).read_text(encoding="utf-8")
     assert '"--profile"' in mount_manifest
@@ -1675,36 +1731,38 @@ def test_codex_bootstrap_install_and_onboarding_close_the_loop(tmp_path: Path) -
     assert "Bootstrap Identity" in memory_text
     assert "Bootstrap Communication Preferences" in memory_text
 
-    bundle = service.build_host_bootstrap(
-        output_dir=bootstrap_dir,
-        host_kind="codex",
-        install=True,
-    )
+    home = tmp_path / "home"
+    with patched_home(home):
+        bundle = service.build_host_bootstrap(
+            output_dir=bootstrap_dir,
+            host_kind="codex",
+            install=True,
+        )
     assert bundle.installed is True
     assert bundle.status.installed is True
 
-    agents_path = tmp_path / "AGENTS.md"
-    project_config_path = tmp_path / ".codex" / "config.toml"
+    agents_path = home / ".codex" / "AGENTS.md"
+    project_config_path = home / ".codex" / "config.toml"
     bootstrap_prompt_path = Path(bundle.bootstrap_prompt_path)
     assert agents_path.exists()
     assert project_config_path.exists()
+    assert not (tmp_path / "AGENTS.md").exists()
     assert bootstrap_prompt_path.exists()
     assert "COGNITIVEOS HOST BOOTSTRAP START" in agents_path.read_text(encoding="utf-8")
     assert "Cold-start mount procedure" in agents_path.read_text(encoding="utf-8")
     assert "reduced `compact-core` profile" in agents_path.read_text(encoding="utf-8")
-    assert "search/read/add/update/link/dream" in bootstrap_prompt_path.read_text(
-        encoding="utf-8"
-    )
+    assert "search/read/add/update/link/dream" in bootstrap_prompt_path.read_text(encoding="utf-8")
     assert "omitting `unlink`" in agents_path.read_text(encoding="utf-8")
     assert "mcp_servers.cognitiveos" in project_config_path.read_text(encoding="utf-8")
     assert "compact-core" in project_config_path.read_text(encoding="utf-8")
     assert "--project-root" in project_config_path.read_text(encoding="utf-8")
     assert "--memory-output-path" in project_config_path.read_text(encoding="utf-8")
 
-    final_status = service.get_host_bootstrap_status(
-        host_kind="codex",
-        output_dir=bootstrap_dir,
-    )
+    with patched_home(home):
+        final_status = service.get_host_bootstrap_status(
+            host_kind="codex",
+            output_dir=bootstrap_dir,
+        )
     assert final_status.first_startup is False
     assert final_status.needs_onboarding is False
     assert final_status.installed is True
@@ -1718,7 +1776,9 @@ def test_non_codex_host_kinds_use_generic_bootstrap_flow_without_install(tmp_pat
         status = service.get_host_bootstrap_status(host_kind=host_kind)
         assert status.host_kind == host_kind.replace("-", "_")
         assert status.installed is False
-        assert any("only implemented for the managed host target" in notice for notice in status.notices)
+        assert any(
+            "only implemented for the managed host target" in notice for notice in status.notices
+        )
 
 
 def test_search_requires_query_or_keyword(tmp_path: Path) -> None:

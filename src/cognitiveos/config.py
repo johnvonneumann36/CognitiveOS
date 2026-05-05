@@ -39,6 +39,18 @@ def _resolve_optional_path(
     return path.resolve()
 
 
+def _resolve_path_list(value: str | None, *, base_dir: Path) -> list[Path]:
+    if not value:
+        return []
+    raw_parts = value.replace("\n", os.pathsep).split(os.pathsep)
+    paths: list[Path] = []
+    for raw_part in raw_parts:
+        candidate = _resolve_optional_path(raw_part.strip(), base_dir=base_dir)
+        if candidate is not None and candidate not in paths:
+            paths.append(candidate)
+    return paths
+
+
 def _infer_runtime_root(
     *,
     runtime_home: Path | None,
@@ -61,6 +73,7 @@ class AppSettings:
     project_root: Path
     db_path: Path
     memory_output_path: Path
+    memory_mirror_paths: list[Path]
     bootstrap_dir: Path
     background_log_dir: Path
     snapshot_dir: Path
@@ -146,6 +159,10 @@ class AppSettings:
             explicit_db_path or env_db_path or runtime_root / "data" / "cognitiveos.db"
         )
         resolved_memory_path = explicit_memory_path or env_memory_path or runtime_root / "MEMORY.MD"
+        resolved_memory_mirror_paths = _resolve_path_list(
+            _env_value("COGNITIVEOS_MEMORY_MIRROR_PATHS", dotenv),
+            base_dir=resolved_project_root,
+        )
         env_bootstrap_dir = _resolve_optional_path(
             _env_value("COGNITIVEOS_BOOTSTRAP_DIR", dotenv),
             base_dir=resolved_project_root,
@@ -173,6 +190,7 @@ class AppSettings:
             project_root=resolved_project_root,
             db_path=resolved_db_path,
             memory_output_path=resolved_memory_path,
+            memory_mirror_paths=resolved_memory_mirror_paths,
             bootstrap_dir=resolved_bootstrap_dir,
             background_log_dir=resolved_background_log_dir,
             snapshot_dir=resolved_snapshot_dir,
@@ -195,29 +213,23 @@ class AppSettings:
                 _env_value("COGNITIVEOS_SEARCH_CANDIDATE_CAP", dotenv) or "20"
             ),
             search_governance_interval_seconds=int(
-                _env_value("COGNITIVEOS_SEARCH_GOVERNANCE_INTERVAL_SECONDS", dotenv)
-                or "300"
+                _env_value("COGNITIVEOS_SEARCH_GOVERNANCE_INTERVAL_SECONDS", dotenv) or "300"
             ),
             search_async_access_logging=_env_bool(
                 "COGNITIVEOS_SEARCH_ASYNC_ACCESS_LOGGING",
                 True,
                 dotenv=dotenv,
             ),
-            semantic_neighbor_k=int(
-                _env_value("COGNITIVEOS_SEMANTIC_NEIGHBOR_K", dotenv) or "8"
-            ),
+            semantic_neighbor_k=int(_env_value("COGNITIVEOS_SEMANTIC_NEIGHBOR_K", dotenv) or "8"),
             dream_event_threshold=int(
                 _env_value("COGNITIVEOS_DREAM_EVENT_THRESHOLD", dotenv) or "10"
             ),
-            dream_max_age_hours=int(
-                _env_value("COGNITIVEOS_DREAM_MAX_AGE_HOURS", dotenv) or "24"
-            ),
+            dream_max_age_hours=int(_env_value("COGNITIVEOS_DREAM_MAX_AGE_HOURS", dotenv) or "24"),
             dream_age_min_event_count=int(
                 _env_value("COGNITIVEOS_DREAM_AGE_MIN_EVENT_COUNT", dotenv) or "5"
             ),
             entityless_union_similarity_threshold=float(
-                _env_value("COGNITIVEOS_ENTITYLESS_UNION_SIMILARITY_THRESHOLD", dotenv)
-                or "0.8"
+                _env_value("COGNITIVEOS_ENTITYLESS_UNION_SIMILARITY_THRESHOLD", dotenv) or "0.8"
             ),
             max_projected_super_nodes=int(
                 _env_value("COGNITIVEOS_MAX_PROJECTED_SUPER_NODES", dotenv) or "5"
@@ -225,9 +237,7 @@ class AppSettings:
             long_document_token_threshold=int(
                 _env_value("COGNITIVEOS_LONG_DOCUMENT_TOKEN_THRESHOLD", dotenv) or "1200"
             ),
-            chunk_target_tokens=int(
-                _env_value("COGNITIVEOS_CHUNK_TARGET_TOKENS", dotenv) or "900"
-            ),
+            chunk_target_tokens=int(_env_value("COGNITIVEOS_CHUNK_TARGET_TOKENS", dotenv) or "900"),
             chunk_overlap_tokens=int(
                 _env_value("COGNITIVEOS_CHUNK_OVERLAP_TOKENS", dotenv) or "120"
             ),
@@ -244,12 +254,10 @@ class AppSettings:
                 _env_value("COGNITIVEOS_RELATIONSHIP_STALE_AFTER_HOURS", dotenv) or "168"
             ),
             relationship_weak_strength_threshold=float(
-                _env_value("COGNITIVEOS_RELATIONSHIP_WEAK_STRENGTH_THRESHOLD", dotenv)
-                or "0.85"
+                _env_value("COGNITIVEOS_RELATIONSHIP_WEAK_STRENGTH_THRESHOLD", dotenv) or "0.85"
             ),
             relationship_stale_strength_threshold=float(
-                _env_value("COGNITIVEOS_RELATIONSHIP_STALE_STRENGTH_THRESHOLD", dotenv)
-                or "0.35"
+                _env_value("COGNITIVEOS_RELATIONSHIP_STALE_STRENGTH_THRESHOLD", dotenv) or "0.35"
             ),
             relationship_weak_decay_delta=float(
                 _env_value("COGNITIVEOS_RELATIONSHIP_WEAK_DECAY_DELTA", dotenv) or "0.2"
@@ -299,6 +307,8 @@ class AppSettings:
     def ensure_runtime_paths(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.memory_output_path.parent.mkdir(parents=True, exist_ok=True)
+        for mirror_path in self.memory_mirror_paths:
+            mirror_path.parent.mkdir(parents=True, exist_ok=True)
         self.bootstrap_dir.mkdir(parents=True, exist_ok=True)
         self.background_log_dir.mkdir(parents=True, exist_ok=True)
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
