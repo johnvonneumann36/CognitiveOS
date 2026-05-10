@@ -51,7 +51,28 @@ class DreamCompiler:
         min_cluster_size: int,
         max_candidates: int,
         similarity_threshold: float,
+        cascade_passes: int = 3,
+        cascade_threshold_step: float = 0.12,
+        cascade_max_threshold: float = 0.95,
+        leiden_resolution_start: float = 1.75,
+        leiden_resolution_step: float = 0.4,
+        leiden_resolution_min: float = 0.85,
+        bridge_edge_weight_multiplier: float = 0.65,
     ) -> DreamResult:
+        cascade_passes = max(1, cascade_passes)
+        layer_names = ["small", "medium", "large"]
+
+        def leiden_resolution_for_pass(pass_index: int) -> float:
+            return max(
+                leiden_resolution_min,
+                leiden_resolution_start - (leiden_resolution_step * pass_index),
+            )
+
+        def layer_name_for_pass(pass_index: int) -> str:
+            if pass_index < len(layer_names):
+                return layer_names[pass_index]
+            return f"layer_{pass_index}"
+
         candidates = [
             node
             for node in self.repository.list_recent_or_frequent_nodes(
@@ -71,12 +92,23 @@ class DreamCompiler:
             "max_candidates": max_candidates,
             "min_cluster_size": min_cluster_size,
             "entity_extraction_backend": "metadata_entities",
+            "cluster_backend": "leiden_knn_graph",
+            "cascade_passes": cascade_passes,
+            "cascade_threshold_step": cascade_threshold_step,
+            "cascade_max_threshold": cascade_max_threshold,
+            "leiden_resolution_start": leiden_resolution_start,
+            "leiden_resolution_step": leiden_resolution_step,
+            "leiden_resolution_min": leiden_resolution_min,
+            "bridge_edge_weight_multiplier": bridge_edge_weight_multiplier,
+            "layer_names": layer_names[:cascade_passes],
         }
+        first_pass_resolution = leiden_resolution_for_pass(0)
         candidate_explanations = [
             {
                 "node_id": node.id,
                 "decision": "included",
                 "reason": "recent_or_frequent_non_system_non_pinned_memory",
+                "pass_index": 0,
                 "node_type": node.node_type,
                 "durability": node.durability,
                 "entities": metadata_entities(node.metadata),
@@ -87,6 +119,9 @@ class DreamCompiler:
             candidates,
             min_cluster_size=min_cluster_size,
             similarity_threshold=similarity_threshold,
+            leiden_resolution=first_pass_resolution,
+            pass_index=0,
+            bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
         )
         cluster_explanations = [
             {
@@ -96,6 +131,9 @@ class DreamCompiler:
                 "entities": self._cluster_entities(cluster),
                 "decision": "eligible_for_compaction",
                 "reason": f"cluster_size >= {min_cluster_size}",
+                "pass_index": 0,
+                "dream_layer": layer_name_for_pass(0),
+                "leiden_resolution": first_pass_resolution,
             }
             for index, cluster in enumerate(clusters)
         ]
@@ -109,54 +147,134 @@ class DreamCompiler:
         pending_compactions: list[DreamCompactionTask] = []
         notices: list[str] = []
 
-        for cluster in clusters:
-            self.governance.reinforce_cluster_relationships([node.id for node in cluster])
-            if self.chat_provider is None:
-                pending_compactions.append(
-                    self._create_host_compaction_task(
-                        run_id=run_id,
-                        cluster=cluster,
-                        reason="Chat provider is not configured.",
+        def materialize_clusters(
+            pass_clusters: list[list[NodeRecord]],
+            *,
+            pass_index: int,
+        ) -> list[NodeRecord]:
+            materialized: list[NodeRecord] = []
+            for cluster in pass_clusters:
+                self.governance.reinforce_cluster_relationships([node.id for node in cluster])
+                if self.chat_provider is None:
+                    pending_compactions.append(
+                        self._create_host_compaction_task(
+                            run_id=run_id,
+                            cluster=cluster,
+                            reason="Chat provider is not configured.",
+                        )
                     )
-                )
-                continue
+                    continue
 
-            try:
-                super_node = self.create_super_node_from_cluster(
-                    cluster,
-                    title=self._make_super_node_title(cluster),
-                    description=self._make_chat_super_node_description(cluster),
-                    content=self._make_super_node_content(cluster),
-                    backend="chat_provider",
-                    run_id=run_id,
-                )
-            except Exception as exc:
-                pending_compactions.append(
-                    self._create_host_compaction_task(
+                try:
+                    super_node = self.create_super_node_from_cluster(
+                        cluster,
+                        title=self._make_super_node_title(cluster),
+                        description=self._make_chat_super_node_description(cluster),
+                        content=self._make_super_node_content(cluster),
+                        backend="chat_provider",
                         run_id=run_id,
-                        cluster=cluster,
-                        reason=f"Chat provider failed during dream compaction: {exc}",
+                        dream_layer=layer_name_for_pass(pass_index),
+                    )
+                except Exception as exc:
+                    pending_compactions.append(
+                        self._create_host_compaction_task(
+                            run_id=run_id,
+                            cluster=cluster,
+                            reason=f"Chat provider failed during dream compaction: {exc}",
+                        )
+                    )
+                    notices.append(
+                        "Dream delegated a cluster to the host agent because the chat provider "
+                        f"failed: {exc}"
+                    )
+                    continue
+
+                self._redirect_edges(cluster, super_node)
+                super_nodes.append(
+                    DreamSuperNode(
+                        node_id=super_node.id,
+                        source_node_ids=[node.id for node in cluster],
                     )
                 )
+                materialized.append(super_node)
+                durability_suggestions.extend(
+                    self.governance.build_cluster_durability_suggestions(
+                        cluster,
+                        super_node=super_node,
+                    )
+                )
+            if materialized and pass_index > 0:
                 notices.append(
-                    "Dream delegated a cluster to the host agent because the chat provider "
-                    f"failed: {exc}"
+                    f"Dream cascade pass {pass_index} created {len(materialized)} super nodes."
                 )
-                continue
+            return materialized
 
-            self._redirect_edges(cluster, super_node)
-            super_nodes.append(
-                DreamSuperNode(
-                    node_id=super_node.id,
-                    source_node_ids=[node.id for node in cluster],
+        cascade_candidates = materialize_clusters(clusters, pass_index=0)
+        all_candidate_ids = [node.id for node in candidates]
+
+        for pass_index in range(1, cascade_passes):
+            if len(cascade_candidates) < min_cluster_size:
+                break
+            pass_threshold = min(
+                cascade_max_threshold,
+                similarity_threshold + (cascade_threshold_step * pass_index),
+            )
+            pass_leiden_resolution = leiden_resolution_for_pass(pass_index)
+            all_candidate_ids.extend(node.id for node in cascade_candidates)
+            candidate_explanations.extend(
+                {
+                    "node_id": node.id,
+                    "decision": "included",
+                    "reason": "new_super_node_from_prior_dream_pass",
+                    "pass_index": pass_index,
+                    "dream_layer": layer_name_for_pass(pass_index),
+                    "node_type": node.node_type,
+                    "durability": node.durability,
+                    "entities": metadata_entities(node.metadata),
+                }
+                for node in cascade_candidates
+            )
+            pass_clusters, pass_skipped, pass_entity_decisions = self._build_clusters(
+                cascade_candidates,
+                min_cluster_size=min_cluster_size,
+                similarity_threshold=pass_threshold,
+                leiden_resolution=pass_leiden_resolution,
+                pass_index=pass_index,
+                bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
+            )
+            skipped_unions.extend(
+                {**decision, "pass_index": pass_index} for decision in pass_skipped
+            )
+            entity_gate_decisions.extend(
+                {**decision, "pass_index": pass_index} for decision in pass_entity_decisions
+            )
+            cluster_explanations.extend(
+                {
+                    "cluster_index": len(cluster_explanations) + index,
+                    "node_ids": [node.id for node in cluster],
+                    "size": len(cluster),
+                    "entities": self._cluster_entities(cluster),
+                    "decision": "eligible_for_cascade_compaction",
+                    "reason": (
+                        f"cascade pass {pass_index} cluster_size >= {min_cluster_size} "
+                        f"at threshold {pass_threshold}"
+                    ),
+                    "pass_index": pass_index,
+                    "dream_layer": layer_name_for_pass(pass_index),
+                    "leiden_resolution": pass_leiden_resolution,
+                }
+                for index, cluster in enumerate(pass_clusters)
+            )
+            relationship_cleanup_plans.extend(
+                self.governance.build_relationship_cleanup_plans(
+                    cascade_candidates,
+                    pass_clusters,
                 )
             )
-            durability_suggestions.extend(
-                self.governance.build_cluster_durability_suggestions(
-                    cluster,
-                    super_node=super_node,
-                )
-            )
+            next_candidates = materialize_clusters(pass_clusters, pass_index=pass_index)
+            if not next_candidates:
+                break
+            cascade_candidates = next_candidates
 
         rendered_path = self.governance.compile_memory_snapshot(output_path)
         projected_memory = self.governance.describe_memory_projection()
@@ -174,7 +292,7 @@ class DreamCompiler:
             notices.append(f"Dream produced {len(durability_suggestions)} durability suggestions.")
         return DreamResult(
             status=status,
-            candidate_node_ids=[node.id for node in candidates],
+            candidate_node_ids=list(dict.fromkeys(all_candidate_ids)),
             clusters_created=len(super_nodes),
             super_nodes=super_nodes,
             relationship_cleanup_plans=relationship_cleanup_plans,
@@ -241,6 +359,7 @@ class DreamCompiler:
         backend: str,
         run_id: str,
         task_id: str | None = None,
+        dream_layer: str | None = None,
     ) -> NodeRecord:
         cluster_entities = self._cluster_entities(cluster)
         metadata = {
@@ -251,6 +370,8 @@ class DreamCompiler:
             "compression_policy_version": "entity-assisted-v1",
             "projection_policy_version": self.governance.projection_policy_version,
         }
+        if dream_layer is not None:
+            metadata["dream_layer"] = dream_layer
         if cluster_entities:
             metadata["entities"] = cluster_entities
         if task_id is not None:
@@ -280,41 +401,64 @@ class DreamCompiler:
         *,
         min_cluster_size: int,
         similarity_threshold: float,
+        leiden_resolution: float = 1.75,
+        pass_index: int = 0,
+        bridge_edge_weight_multiplier: float = 0.65,
+    ) -> tuple[list[list[NodeRecord]], list[dict[str, Any]], list[dict[str, Any]]]:
+        return self._build_clusters_leiden(
+            candidates,
+            min_cluster_size=min_cluster_size,
+            similarity_threshold=similarity_threshold,
+            leiden_resolution=leiden_resolution,
+            pass_index=pass_index,
+            bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
+        )
+
+    def _build_clusters_leiden(
+        self,
+        candidates: list[NodeRecord],
+        *,
+        min_cluster_size: int,
+        similarity_threshold: float,
+        leiden_resolution: float,
+        pass_index: int,
+        bridge_edge_weight_multiplier: float,
     ) -> tuple[list[list[NodeRecord]], list[dict[str, Any]], list[dict[str, Any]]]:
         if not candidates:
             return [], [], []
 
         candidate_ids = {node.id for node in candidates}
         rows_by_id = {node.id: node for node in candidates}
-        parent = {node.id: node.id for node in candidates}
-        rank = {node.id: 0 for node in candidates}
+        id_to_idx = {node.id: idx for idx, node in enumerate(candidates)}
         skipped_unions: list[dict[str, Any]] = []
         entity_gate_decisions: list[dict[str, Any]] = []
+        edge_weights: dict[tuple[int, int], float] = {}
 
-        def find(node_id: str) -> str:
-            root = node_id
-            while parent[root] != root:
-                root = parent[root]
-            while parent[node_id] != node_id:
-                next_node = parent[node_id]
-                parent[node_id] = root
-                node_id = next_node
-            return root
-
-        def union(left_id: str, right_id: str) -> None:
-            left_root = find(left_id)
-            right_root = find(right_id)
-            if left_root == right_root:
+        def add_edge(left_id: str, right_id: str, weight: float) -> None:
+            if left_id == right_id:
                 return
-            if rank[left_root] < rank[right_root]:
-                left_root, right_root = right_root, left_root
-            parent[right_root] = left_root
-            if rank[left_root] == rank[right_root]:
-                rank[left_root] += 1
+            left_idx = id_to_idx[left_id]
+            right_idx = id_to_idx[right_id]
+            if left_idx > right_idx:
+                left_idx, right_idx = right_idx, left_idx
+            edge_key = (left_idx, right_idx)
+            edge_weights[edge_key] = max(edge_weights.get(edge_key, 0.0), weight)
 
         for edge in self.repository.list_edges_for_nodes(list(candidate_ids)):
             if edge.src_id in candidate_ids and edge.dst_id in candidate_ids:
-                union(edge.src_id, edge.dst_id)
+                weight = max(float(edge.strength_score) * 3.0, 2.0)
+                add_edge(edge.src_id, edge.dst_id, weight)
+                entity_gate_decisions.append(
+                    {
+                        "left_node_id": edge.src_id,
+                        "right_node_id": edge.dst_id,
+                        "similarity": None,
+                        "decision": "allowed",
+                        "reason": "explicit_edge_fused",
+                        "relation": edge.relation,
+                        "weight": weight,
+                    }
+                )
 
         available_ids = [node.id for node in candidates if node.embedding is not None]
         cached_neighbor_rows = self.repository.list_semantic_neighbors(
@@ -384,9 +528,140 @@ class DreamCompiler:
                     "reason": "entity_gate_allowed_union",
                     "left_entities": metadata_entities(rows_by_id[node_id].metadata),
                     "right_entities": metadata_entities(rows_by_id[neighbor_id].metadata),
+                    **self._semantic_bridge_decision(
+                        rows_by_id[node_id],
+                        rows_by_id[neighbor_id],
+                        pass_index=pass_index,
+                        bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
+                    ),
                 }
             )
-            union(node_id, neighbor_id)
+            add_edge(
+                node_id,
+                neighbor_id,
+                float(similarity)
+                * self._semantic_bridge_weight_multiplier(
+                    rows_by_id[node_id],
+                    rows_by_id[neighbor_id],
+                    bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
+                ),
+            )
+
+        try:
+            import igraph as ig
+            import leidenalg
+        except ImportError:
+            return self._build_clusters_union_find_fallback(
+                candidates,
+                min_cluster_size=min_cluster_size,
+                edge_pairs=[
+                    (candidates[left_idx].id, candidates[right_idx].id)
+                    for left_idx, right_idx in edge_weights
+                ],
+                skipped_unions=skipped_unions,
+                entity_gate_decisions=entity_gate_decisions,
+            )
+
+        edges_list = list(edge_weights.keys())
+        weights_list = [edge_weights[edge] for edge in edges_list]
+        graph = ig.Graph(n=len(candidates), edges=edges_list, directed=False)
+        graph.es["weight"] = weights_list
+        partition = leidenalg.find_partition(
+            graph,
+            leidenalg.RBConfigurationVertexPartition,
+            weights="weight",
+            resolution_parameter=leiden_resolution,
+            seed=0,
+        )
+
+        clusters = []
+        for component_indices in partition:
+            component_nodes = [candidates[idx] for idx in component_indices]
+            if len(component_nodes) >= min_cluster_size:
+                clusters.append(component_nodes)
+        return clusters, skipped_unions, entity_gate_decisions
+
+    @classmethod
+    def _semantic_bridge_decision(
+        cls,
+        left: NodeRecord,
+        right: NodeRecord,
+        *,
+        pass_index: int,
+        bridge_edge_weight_multiplier: float,
+    ) -> dict[str, Any]:
+        left_entities = cls._node_gate_entities(left)
+        right_entities = cls._node_gate_entities(right)
+        shared_entities = sorted(left_entities & right_entities)
+        bridge_risk = bool(
+            shared_entities
+            and (left_entities - right_entities)
+            and (right_entities - left_entities)
+        )
+        weight_multiplier = (
+            bridge_edge_weight_multiplier if bridge_risk else 1.0
+        )
+        return {
+            "pass_index": pass_index,
+            "bridge_risk": bridge_risk,
+            "shared_entities": shared_entities,
+            "left_unique_entities": sorted(left_entities - right_entities),
+            "right_unique_entities": sorted(right_entities - left_entities),
+            "bridge_weight_multiplier": weight_multiplier,
+        }
+
+    @classmethod
+    def _semantic_bridge_weight_multiplier(
+        cls,
+        left: NodeRecord,
+        right: NodeRecord,
+        *,
+        bridge_edge_weight_multiplier: float,
+    ) -> float:
+        decision = cls._semantic_bridge_decision(
+            left,
+            right,
+            pass_index=0,
+            bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
+        )
+        return float(decision["bridge_weight_multiplier"])
+
+    @staticmethod
+    def _build_clusters_union_find_fallback(
+        candidates: list[NodeRecord],
+        *,
+        min_cluster_size: int,
+        edge_pairs: list[tuple[str, str]],
+        skipped_unions: list[dict[str, Any]],
+        entity_gate_decisions: list[dict[str, Any]],
+    ) -> tuple[list[list[NodeRecord]], list[dict[str, Any]], list[dict[str, Any]]]:
+        rows_by_id = {node.id: node for node in candidates}
+        parent = {node.id: node.id for node in candidates}
+        rank = {node.id: 0 for node in candidates}
+
+        def find(node_id: str) -> str:
+            root = node_id
+            while parent[root] != root:
+                root = parent[root]
+            while parent[node_id] != node_id:
+                next_node = parent[node_id]
+                parent[node_id] = root
+                node_id = next_node
+            return root
+
+        def union(left_id: str, right_id: str) -> None:
+            left_root = find(left_id)
+            right_root = find(right_id)
+            if left_root == right_root:
+                return
+            if rank[left_root] < rank[right_root]:
+                left_root, right_root = right_root, left_root
+            parent[right_root] = left_root
+            if rank[left_root] == rank[right_root]:
+                rank[left_root] += 1
+
+        for left_id, right_id in edge_pairs:
+            union(left_id, right_id)
 
         grouped: dict[str, list[NodeRecord]] = defaultdict(list)
         for node in candidates:

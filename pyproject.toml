@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognitiveos"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local-first cognitive graph middleware with CLI, MCP, and Docker runtime targets."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,8 @@ dependencies = [
   "mcp[cli]>=1.27,<2.0",
   "pydantic>=2.11,<3.0",
   "python-dotenv>=1.0,<2.0",
+  "leidenalg>=0.10,<0.11",
+  "python-igraph>=0.11,<0.12",
   "sqlite-vec>=0.1.9,<0.2",
   "trafilatura>=2.0,<3.0",
   "typer>=0.16,<1.0",
@@ -56,6 +58,19 @@ cognitiveos-mcp = "cognitiveos.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cognitiveos"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.env",
+  "/.cognitiveos",
+  "/artifacts",
+  "/benchmark/data",
+  "/benchmark/data/**",
+  "/data",
+  "/data/**",
+  "/tests",
+  "/tests/**",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

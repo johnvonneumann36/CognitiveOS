@@ -28,6 +28,13 @@ def main() -> None:
     dream_parser.add_argument("--min-cluster-size", type=int, required=True)
     dream_parser.add_argument("--max-candidates", type=int, required=True)
     dream_parser.add_argument("--similarity-threshold", type=float, required=True)
+    dream_parser.add_argument("--cascade-passes", type=int)
+    dream_parser.add_argument("--cascade-threshold-step", type=float)
+    dream_parser.add_argument("--cascade-max-threshold", type=float)
+    dream_parser.add_argument("--leiden-resolution-start", type=float)
+    dream_parser.add_argument("--leiden-resolution-step", type=float)
+    dream_parser.add_argument("--leiden-resolution-min", type=float)
+    dream_parser.add_argument("--bridge-edge-weight-multiplier", type=float)
     dream_parser.add_argument("--trigger-reason", required=True)
     dream_parser.add_argument("--auto-triggered", choices=["0", "1"], required=True)
 
@@ -54,6 +61,37 @@ def main() -> None:
             similarity_threshold=args.similarity_threshold,
             trigger_reason=args.trigger_reason,
             auto_triggered=args.auto_triggered == "1",
+            cascade_passes=args.cascade_passes or service.settings.dream_cascade_passes,
+            cascade_threshold_step=(
+                args.cascade_threshold_step
+                if args.cascade_threshold_step is not None
+                else service.settings.dream_cascade_threshold_step
+            ),
+            cascade_max_threshold=(
+                args.cascade_max_threshold
+                if args.cascade_max_threshold is not None
+                else service.settings.dream_cascade_max_threshold
+            ),
+            leiden_resolution_start=(
+                args.leiden_resolution_start
+                if args.leiden_resolution_start is not None
+                else service.settings.dream_leiden_resolution_start
+            ),
+            leiden_resolution_step=(
+                args.leiden_resolution_step
+                if args.leiden_resolution_step is not None
+                else service.settings.dream_leiden_resolution_step
+            ),
+            leiden_resolution_min=(
+                args.leiden_resolution_min
+                if args.leiden_resolution_min is not None
+                else service.settings.dream_leiden_resolution_min
+            ),
+            bridge_edge_weight_multiplier=(
+                args.bridge_edge_weight_multiplier
+                if args.bridge_edge_weight_multiplier is not None
+                else service.settings.dream_bridge_edge_weight_multiplier
+            ),
         )
         return
 

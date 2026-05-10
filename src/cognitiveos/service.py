@@ -759,6 +759,13 @@ class CognitiveOSService:
         trigger_reason: str | None = None,
         auto_triggered: bool = False,
         background: bool = False,
+        cascade_passes: int | None = None,
+        cascade_threshold_step: float | None = None,
+        cascade_max_threshold: float | None = None,
+        leiden_resolution_start: float | None = None,
+        leiden_resolution_step: float | None = None,
+        leiden_resolution_min: float | None = None,
+        bridge_edge_weight_multiplier: float | None = None,
     ) -> DreamResult:
         self.initialize()
         self.last_notices = []
@@ -792,6 +799,41 @@ class CognitiveOSService:
                 similarity_threshold=similarity_threshold or self.settings.similarity_threshold,
                 trigger_reason=trigger_reason,
                 auto_triggered=auto_triggered,
+                cascade_passes=(
+                    cascade_passes
+                    if cascade_passes is not None
+                    else self.settings.dream_cascade_passes
+                ),
+                cascade_threshold_step=(
+                    cascade_threshold_step
+                    if cascade_threshold_step is not None
+                    else self.settings.dream_cascade_threshold_step
+                ),
+                cascade_max_threshold=(
+                    cascade_max_threshold
+                    if cascade_max_threshold is not None
+                    else self.settings.dream_cascade_max_threshold
+                ),
+                leiden_resolution_start=(
+                    leiden_resolution_start
+                    if leiden_resolution_start is not None
+                    else self.settings.dream_leiden_resolution_start
+                ),
+                leiden_resolution_step=(
+                    leiden_resolution_step
+                    if leiden_resolution_step is not None
+                    else self.settings.dream_leiden_resolution_step
+                ),
+                leiden_resolution_min=(
+                    leiden_resolution_min
+                    if leiden_resolution_min is not None
+                    else self.settings.dream_leiden_resolution_min
+                ),
+                bridge_edge_weight_multiplier=(
+                    bridge_edge_weight_multiplier
+                    if bridge_edge_weight_multiplier is not None
+                    else self.settings.dream_bridge_edge_weight_multiplier
+                ),
             )
 
         run_id = self.repository.start_dream_run(
@@ -809,6 +851,41 @@ class CognitiveOSService:
             similarity_threshold=similarity_threshold or self.settings.similarity_threshold,
             trigger_reason=trigger_reason or "manual",
             auto_triggered=auto_triggered,
+            cascade_passes=(
+                cascade_passes
+                if cascade_passes is not None
+                else self.settings.dream_cascade_passes
+            ),
+            cascade_threshold_step=(
+                cascade_threshold_step
+                if cascade_threshold_step is not None
+                else self.settings.dream_cascade_threshold_step
+            ),
+            cascade_max_threshold=(
+                cascade_max_threshold
+                if cascade_max_threshold is not None
+                else self.settings.dream_cascade_max_threshold
+            ),
+            leiden_resolution_start=(
+                leiden_resolution_start
+                if leiden_resolution_start is not None
+                else self.settings.dream_leiden_resolution_start
+            ),
+            leiden_resolution_step=(
+                leiden_resolution_step
+                if leiden_resolution_step is not None
+                else self.settings.dream_leiden_resolution_step
+            ),
+            leiden_resolution_min=(
+                leiden_resolution_min
+                if leiden_resolution_min is not None
+                else self.settings.dream_leiden_resolution_min
+            ),
+            bridge_edge_weight_multiplier=(
+                bridge_edge_weight_multiplier
+                if bridge_edge_weight_multiplier is not None
+                else self.settings.dream_bridge_edge_weight_multiplier
+            ),
         )
 
     def execute_dream_run(
@@ -823,6 +900,13 @@ class CognitiveOSService:
         similarity_threshold: float,
         trigger_reason: str,
         auto_triggered: bool,
+        cascade_passes: int = 3,
+        cascade_threshold_step: float = 0.12,
+        cascade_max_threshold: float = 0.95,
+        leiden_resolution_start: float = 1.75,
+        leiden_resolution_step: float = 0.4,
+        leiden_resolution_min: float = 0.85,
+        bridge_edge_weight_multiplier: float = 0.65,
     ) -> DreamResult:
         self.initialize()
         total_started = perf_counter()
@@ -839,6 +923,13 @@ class CognitiveOSService:
                 min_cluster_size=min_cluster_size,
                 max_candidates=max_candidates,
                 similarity_threshold=similarity_threshold,
+                cascade_passes=cascade_passes,
+                cascade_threshold_step=cascade_threshold_step,
+                cascade_max_threshold=cascade_max_threshold,
+                leiden_resolution_start=leiden_resolution_start,
+                leiden_resolution_step=leiden_resolution_step,
+                leiden_resolution_min=leiden_resolution_min,
+                bridge_edge_weight_multiplier=bridge_edge_weight_multiplier,
             )
             timings_ms["compiler_run"] = self._elapsed_ms(phase_started)
         except Exception as exc:
@@ -881,6 +972,13 @@ class CognitiveOSService:
         similarity_threshold: float | None = None,
         trigger_reason: str | None = None,
         auto_triggered: bool = False,
+        cascade_passes: int | None = None,
+        cascade_threshold_step: float | None = None,
+        cascade_max_threshold: float | None = None,
+        leiden_resolution_start: float | None = None,
+        leiden_resolution_step: float | None = None,
+        leiden_resolution_min: float | None = None,
+        bridge_edge_weight_multiplier: float | None = None,
     ) -> DreamResult:
         self.initialize()
         self._wait_for_background_tasks()
@@ -912,6 +1010,41 @@ class CognitiveOSService:
             similarity_threshold=similarity_threshold or self.settings.similarity_threshold,
             trigger_reason=trigger_reason or "manual",
             auto_triggered=auto_triggered,
+            cascade_passes=(
+                cascade_passes
+                if cascade_passes is not None
+                else self.settings.dream_cascade_passes
+            ),
+            cascade_threshold_step=(
+                cascade_threshold_step
+                if cascade_threshold_step is not None
+                else self.settings.dream_cascade_threshold_step
+            ),
+            cascade_max_threshold=(
+                cascade_max_threshold
+                if cascade_max_threshold is not None
+                else self.settings.dream_cascade_max_threshold
+            ),
+            leiden_resolution_start=(
+                leiden_resolution_start
+                if leiden_resolution_start is not None
+                else self.settings.dream_leiden_resolution_start
+            ),
+            leiden_resolution_step=(
+                leiden_resolution_step
+                if leiden_resolution_step is not None
+                else self.settings.dream_leiden_resolution_step
+            ),
+            leiden_resolution_min=(
+                leiden_resolution_min
+                if leiden_resolution_min is not None
+                else self.settings.dream_leiden_resolution_min
+            ),
+            bridge_edge_weight_multiplier=(
+                bridge_edge_weight_multiplier
+                if bridge_edge_weight_multiplier is not None
+                else self.settings.dream_bridge_edge_weight_multiplier
+            ),
         )
         return DreamResult(
             status="queued",
@@ -2590,6 +2723,13 @@ class CognitiveOSService:
         similarity_threshold: float,
         trigger_reason: str,
         auto_triggered: bool,
+        cascade_passes: int,
+        cascade_threshold_step: float,
+        cascade_max_threshold: float,
+        leiden_resolution_start: float,
+        leiden_resolution_step: float,
+        leiden_resolution_min: float,
+        bridge_edge_weight_multiplier: float,
     ) -> None:
         command = [
             sys.executable,
@@ -2616,6 +2756,20 @@ class CognitiveOSService:
             trigger_reason,
             "--auto-triggered",
             "1" if auto_triggered else "0",
+            "--cascade-passes",
+            str(cascade_passes),
+            "--cascade-threshold-step",
+            str(cascade_threshold_step),
+            "--cascade-max-threshold",
+            str(cascade_max_threshold),
+            "--leiden-resolution-start",
+            str(leiden_resolution_start),
+            "--leiden-resolution-step",
+            str(leiden_resolution_step),
+            "--leiden-resolution-min",
+            str(leiden_resolution_min),
+            "--bridge-edge-weight-multiplier",
+            str(bridge_edge_weight_multiplier),
         ]
         self._spawn_background_process(command)
 

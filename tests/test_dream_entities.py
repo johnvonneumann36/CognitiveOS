@@ -4,13 +4,29 @@ from cognitiveos.config import AppSettings
 from cognitiveos.db.repository import SQLiteRepository
 from cognitiveos.dream import DreamCompiler
 from cognitiveos.metadata_shapes import extract_node_entities
-from cognitiveos.models import AddPayloadType, NodeRecord
+from cognitiveos.models import AddPayloadType, EdgeRecord, NodeRecord
 from cognitiveos.service import CognitiveOSService
 
 
 class SameEmbeddingProvider:
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [[1.0, 0.0, 0.0] for _text in texts]
+
+
+class CascadeEmbeddingProvider:
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        embeddings = []
+        for text in texts:
+            lowered = text.lower()
+            if "dream consolidation result" in lowered:
+                embeddings.append([1.0, 1.0, 0.0])
+            elif "restaurant" in lowered:
+                embeddings.append([1.0, 0.0, 0.0])
+            elif "visa" in lowered:
+                embeddings.append([0.0, 1.0, 0.0])
+            else:
+                embeddings.append([0.0, 0.0, 1.0])
+        return embeddings
 
 
 class EmptySummaryChatProvider:
@@ -135,6 +151,114 @@ def test_dream_keeps_same_embedding_clusters_separated_by_entity(tmp_path: Path)
     assert entity_sets == {("CognitiveOS",), ("FeedRay",)}
 
 
+def test_dream_fuses_explicit_edges_as_structural_weight(tmp_path: Path) -> None:
+    service, settings = build_service(tmp_path)
+    left = NodeRecord(
+        id="manual_left",
+        description="FeedRay release note",
+        content="FeedRay release note",
+        metadata={"entities": ["FeedRay"]},
+    )
+    right = NodeRecord(
+        id="manual_right",
+        description="CognitiveOS release note",
+        content="CognitiveOS release note",
+        metadata={"entities": ["CognitiveOS"]},
+    )
+    service.repository.create_node(left, actor="test", action_type="create")
+    service.repository.create_node(right, actor="test", action_type="create")
+    service.repository.create_edge(
+        EdgeRecord(
+            src_id=left.id,
+            dst_id=right.id,
+            relation="manual_link",
+            strength_score=1.0,
+        )
+    )
+
+    result = service.run_dream(
+        output_path=settings.memory_output_path,
+        window_hours=24,
+        min_accesses=0,
+        min_cluster_size=2,
+        max_candidates=20,
+        similarity_threshold=0.99,
+    )
+
+    assert result.clusters_created == 1
+    assert any(
+        decision["reason"] == "explicit_edge_fused"
+        for decision in result.entity_gate_decisions
+    )
+
+
+def test_dream_cascade_reclusters_new_super_nodes(tmp_path: Path) -> None:
+    settings = AppSettings.from_env(
+        db_path=tmp_path / "cognitiveos.db",
+        memory_output_path=tmp_path / "MEMORY.MD",
+        project_root=tmp_path,
+    )
+    settings.dream_event_threshold = 50
+    service = CognitiveOSService(
+        settings=settings,
+        repository=SQLiteRepository(settings.db_path),
+        embedding_provider=CascadeEmbeddingProvider(),
+        chat_provider=EmptySummaryChatProvider(),
+    )
+    service.initialize()
+    for node in [
+        NodeRecord(
+            id="restaurant_a",
+            description="Cebu trip restaurant shortlist",
+            content="Cebu trip restaurant shortlist",
+            embedding=[1.0, 0.0, 0.0],
+            metadata={"entities": ["Cebu Trip", "Restaurants"]},
+        ),
+        NodeRecord(
+            id="restaurant_b",
+            description="Cebu trip restaurant booking",
+            content="Cebu trip restaurant booking",
+            embedding=[1.0, 0.0, 0.0],
+            metadata={"entities": ["Cebu Trip", "Restaurants"]},
+        ),
+        NodeRecord(
+            id="visa_a",
+            description="Cebu trip visa requirement",
+            content="Cebu trip visa requirement",
+            embedding=[0.0, 1.0, 0.0],
+            metadata={"entities": ["Cebu Trip", "Visa"]},
+        ),
+        NodeRecord(
+            id="visa_b",
+            description="Cebu trip visa checklist",
+            content="Cebu trip visa checklist",
+            embedding=[0.0, 1.0, 0.0],
+            metadata={"entities": ["Cebu Trip", "Visa"]},
+        ),
+    ]:
+        service.repository.create_node(node, actor="test", action_type="create")
+
+    result = service.run_dream(
+        output_path=settings.memory_output_path,
+        window_hours=24,
+        min_accesses=0,
+        min_cluster_size=2,
+        max_candidates=20,
+        similarity_threshold=0.6,
+        cascade_passes=2,
+        cascade_threshold_step=0.15,
+    )
+
+    assert result.clusters_created == 3
+    assert result.cluster_explanations[0]["leiden_resolution"] == 1.75
+    assert any(
+        explanation["pass_index"] == 1
+        and explanation["decision"] == "eligible_for_cascade_compaction"
+        and explanation["leiden_resolution"] == 1.35
+        for explanation in result.cluster_explanations
+    )
+
+
 def test_entityless_semantic_neighbors_need_high_similarity() -> None:
     left = NodeRecord(
         id="left",
@@ -243,6 +367,7 @@ def test_dream_result_explains_run_and_projection(tmp_path: Path) -> None:
 
     assert result.effective_config["semantic_threshold"] == 0.6
     assert result.effective_config["entityless_threshold"] == 0.8
+    assert result.effective_config["leiden_resolution_start"] == 1.75
     assert len(result.candidate_explanations) == 2
     assert result.cluster_explanations[0]["decision"] == "eligible_for_compaction"
     assert result.entity_gate_decisions[0]["decision"] == "allowed"

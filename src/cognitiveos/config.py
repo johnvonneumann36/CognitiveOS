@@ -93,6 +93,13 @@ class AppSettings:
     dream_event_threshold: int = 10
     dream_max_age_hours: int = 24
     dream_age_min_event_count: int = 5
+    dream_cascade_passes: int = 3
+    dream_cascade_threshold_step: float = 0.12
+    dream_cascade_max_threshold: float = 0.95
+    dream_leiden_resolution_start: float = 1.75
+    dream_leiden_resolution_step: float = 0.4
+    dream_leiden_resolution_min: float = 0.85
+    dream_bridge_edge_weight_multiplier: float = 0.65
     entityless_union_similarity_threshold: float = 0.8
     max_projected_super_nodes: int = 5
     long_document_token_threshold: int = 1200
@@ -227,6 +234,28 @@ class AppSettings:
             dream_max_age_hours=int(_env_value("COGNITIVEOS_DREAM_MAX_AGE_HOURS", dotenv) or "24"),
             dream_age_min_event_count=int(
                 _env_value("COGNITIVEOS_DREAM_AGE_MIN_EVENT_COUNT", dotenv) or "5"
+            ),
+            dream_cascade_passes=int(
+                _env_value("COGNITIVEOS_DREAM_CASCADE_PASSES", dotenv) or "3"
+            ),
+            dream_cascade_threshold_step=float(
+                _env_value("COGNITIVEOS_DREAM_CASCADE_THRESHOLD_STEP", dotenv) or "0.12"
+            ),
+            dream_cascade_max_threshold=float(
+                _env_value("COGNITIVEOS_DREAM_CASCADE_MAX_THRESHOLD", dotenv) or "0.95"
+            ),
+            dream_leiden_resolution_start=float(
+                _env_value("COGNITIVEOS_DREAM_LEIDEN_RESOLUTION_START", dotenv) or "1.75"
+            ),
+            dream_leiden_resolution_step=float(
+                _env_value("COGNITIVEOS_DREAM_LEIDEN_RESOLUTION_STEP", dotenv) or "0.4"
+            ),
+            dream_leiden_resolution_min=float(
+                _env_value("COGNITIVEOS_DREAM_LEIDEN_RESOLUTION_MIN", dotenv) or "0.85"
+            ),
+            dream_bridge_edge_weight_multiplier=float(
+                _env_value("COGNITIVEOS_DREAM_BRIDGE_EDGE_WEIGHT_MULTIPLIER", dotenv)
+                or "0.65"
             ),
             entityless_union_similarity_threshold=float(
                 _env_value("COGNITIVEOS_ENTITYLESS_UNION_SIMILARITY_THRESHOLD", dotenv) or "0.8"
